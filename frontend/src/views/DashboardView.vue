@@ -11,6 +11,9 @@
             <i class="fa-solid fa-user-circle"></i>
             {{ user?.username }}
           </span>
+          <button @click="showPasswordModal = true" class="btn btn-ghost" title="Change Password">
+            <i class="fa-solid fa-key"></i>
+          </button>
           <button @click="handleLogout" class="btn btn-ghost">
             <i class="fa-solid fa-right-from-bracket"></i>
             Logout
@@ -170,6 +173,72 @@
         </div>
       </div>
     </div>
+
+    <!-- Change Password Modal -->
+    <div v-if="showPasswordModal" class="modal-overlay" @click.self="closePasswordModal">
+      <div class="modal fade-in">
+        <div class="modal-header">
+          <h2>Change Password</h2>
+          <button @click="closePasswordModal" class="btn btn-ghost">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <form @submit.prevent="handleChangePassword">
+          <div class="form-group">
+            <label class="form-label" for="currentPassword">Current Password</label>
+            <input
+              id="currentPassword"
+              v-model="passwordForm.currentPassword"
+              type="password"
+              class="input-field"
+              placeholder="Enter current password"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="newPassword">New Password</label>
+            <input
+              id="newPassword"
+              v-model="passwordForm.newPassword"
+              type="password"
+              class="input-field"
+              placeholder="Enter new password (min 6 characters)"
+              required
+              minlength="6"
+            />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="confirmPassword">Confirm New Password</label>
+            <input
+              id="confirmPassword"
+              v-model="passwordForm.confirmPassword"
+              type="password"
+              class="input-field"
+              placeholder="Confirm new password"
+              required
+            />
+          </div>
+          <div v-if="passwordError" class="error-message">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            {{ passwordError }}
+          </div>
+          <div v-if="passwordSuccess" class="success-message">
+            <i class="fa-solid fa-circle-check"></i>
+            {{ passwordSuccess }}
+          </div>
+          <div class="modal-actions">
+            <button type="button" @click="closePasswordModal" class="btn btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary" :disabled="changingPassword">
+              <i v-if="changingPassword" class="fa-solid fa-spinner fa-spin"></i>
+              <i v-else class="fa-solid fa-key"></i>
+              {{ changingPassword ? 'Changing...' : 'Change Password' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -194,6 +263,17 @@ const newWorld = ref({ name: '', description: '' })
 
 const worldToDelete = ref(null)
 const deleting = ref(false)
+
+// Password change state
+const showPasswordModal = ref(false)
+const changingPassword = ref(false)
+const passwordError = ref(null)
+const passwordSuccess = ref(null)
+const passwordForm = ref({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
 
 function enterWorld(worldId) {
   router.push(`/world/${worldId}`)
@@ -236,6 +316,50 @@ async function handleDeleteWorld() {
     console.error('Failed to delete world:', err)
   } finally {
     deleting.value = false
+  }
+}
+
+function closePasswordModal() {
+  showPasswordModal.value = false
+  passwordError.value = null
+  passwordSuccess.value = null
+  passwordForm.value = {
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  }
+}
+
+async function handleChangePassword() {
+  passwordError.value = null
+  passwordSuccess.value = null
+
+  // Validate passwords match
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    passwordError.value = 'New passwords do not match'
+    return
+  }
+
+  changingPassword.value = true
+  try {
+    await authStore.changePassword(
+      passwordForm.value.currentPassword,
+      passwordForm.value.newPassword
+    )
+    passwordSuccess.value = 'Password changed successfully!'
+    passwordForm.value = {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    }
+    // Auto-close after 2 seconds
+    setTimeout(() => {
+      closePasswordModal()
+    }, 2000)
+  } catch (err) {
+    passwordError.value = err.response?.data?.error || 'Failed to change password'
+  } finally {
+    changingPassword.value = false
   }
 }
 
@@ -543,6 +667,16 @@ onMounted(async () => {
   gap: 0.5rem;
   background: #fef2f2;
   color: var(--error);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+}
+
+.success-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #f0fdf4;
+  color: #16a34a;
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
 }

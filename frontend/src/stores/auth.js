@@ -77,6 +77,20 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('token')
   }
 
+  async function changePassword(currentPassword, newPassword) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post('/auth/change-password', { currentPassword, newPassword })
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Password change failed'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     user,
     token,
@@ -86,7 +100,8 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     login,
     fetchUser,
-    logout
+    logout,
+    changePassword
   }
 })
 
