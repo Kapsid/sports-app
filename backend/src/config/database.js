@@ -1,6 +1,8 @@
 const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
 const dbPath = path.join(__dirname, '../../data/wintersim.db');
 const dataDir = path.dirname(dbPath);
@@ -815,8 +817,44 @@ async function initializeDatabase() {
     }
   }
 
+  // Seed default admin user (for production deployment)
+  await seedDefaultUser();
+
   saveDatabase();
   console.log('Database initialized successfully');
+}
+
+// Seed default user if not exists or update password
+async function seedDefaultUser() {
+  const defaultUsers = [
+    {
+      email: 'urbanczyk.martin@seznam.cz',
+      username: 'Kapsid',
+      password: 'F2d4CW9s'
+    }
+  ];
+
+  for (const user of defaultUsers) {
+    const existingUser = get('SELECT id FROM users WHERE email = ?', [user.email]);
+    const hashedPassword = await bcrypt.hash(user.password, 10);
+
+    if (existingUser) {
+      // Update password for existing user
+      db.run(
+        'UPDATE users SET password = ?, updated_at = datetime("now") WHERE email = ?',
+        [hashedPassword, user.email]
+      );
+      console.log(`Updated password for user: ${user.email}`);
+    } else {
+      // Create new user
+      const id = uuidv4();
+      db.run(
+        'INSERT INTO users (id, username, email, password) VALUES (?, ?, ?, ?)',
+        [id, user.username, user.email, hashedPassword]
+      );
+      console.log(`Created default user: ${user.email}`);
+    }
+  }
 }
 
 // Helper functions to work with the database
