@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/auth'
 const routes = [
   {
     path: '/',
-    redirect: '/dashboard'
+    redirect: '/modules'
   },
   {
     path: '/login',
@@ -19,7 +19,18 @@ const routes = [
     meta: { guest: true }
   },
   {
+    path: '/modules',
+    name: 'ModuleSelection',
+    component: () => import('../views/ModuleSelectionView.vue'),
+    meta: { requiresAuth: true }
+  },
+  // Winter Sports (legacy /dashboard path kept as alias)
+  {
     path: '/dashboard',
+    redirect: '/winter-sports'
+  },
+  {
+    path: '/winter-sports',
     name: 'Dashboard',
     component: () => import('../views/DashboardView.vue'),
     meta: { requiresAuth: true }
@@ -89,6 +100,95 @@ const routes = [
     name: 'Sport',
     component: () => import('../views/SportView.vue'),
     meta: { requiresAuth: true }
+  },
+  // Tennis
+  {
+    path: '/tennis',
+    name: 'TennisDashboard',
+    component: () => import('../views/TennisDashboardView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/tennis/world/:id',
+    name: 'TennisWorld',
+    component: () => import('../views/TennisWorldView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/tennis/world/:worldId/player/:playerId',
+    name: 'TennisPlayer',
+    component: () => import('../views/TennisPlayerView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/tennis/world/:worldId/event/:eventId',
+    name: 'TennisEvent',
+    component: () => import('../views/TennisEventView.vue'),
+    meta: { requiresAuth: true }
+  },
+  // Handball
+  {
+    path: '/handball',
+    name: 'HandballDashboard',
+    component: () => import('../views/HandballDashboardView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/handball/league/:id',
+    name: 'HandballLeague',
+    component: () => import('../views/HandballLeagueView.vue'),
+    meta: { requiresAuth: true }
+  },
+  // Ice Hockey
+  {
+    path: '/hockey',
+    name: 'HockeyDashboard',
+    component: () => import('../views/HockeyDashboardView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/hockey/world/:id',
+    name: 'HockeyWorld',
+    component: () => import('../views/HockeyWorldView.vue'),
+    meta: { requiresAuth: true }
+  },
+  // MMA
+  {
+    path: '/mma',
+    name: 'MMADashboard',
+    component: () => import('../views/MMADashboardView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/mma/org/:id',
+    name: 'MMAOrganization',
+    component: () => import('../views/MMAOrganizationView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/mma/org/:orgId/fighter/:fighterId',
+    name: 'MMAFighter',
+    component: () => import('../views/MMAFighterView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/mma/org/:orgId/event/:eventId',
+    name: 'MMAEvent',
+    component: () => import('../views/MMAEventView.vue'),
+    meta: { requiresAuth: true }
+  },
+  // Summer Sports
+  {
+    path: '/summer-sports',
+    name: 'SummerSportsDashboard',
+    component: () => import('../views/SummerSportsDashboardView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/summer-sports/world/:id',
+    name: 'SummerSportsWorld',
+    component: () => import('../views/SummerSportsWorldView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 
@@ -103,7 +203,7 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !token) {
     next('/login')
   } else if (to.meta.guest && token) {
-    next('/dashboard')
+    next('/modules')
   } else {
     next()
   }

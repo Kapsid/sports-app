@@ -85,7 +85,7 @@
               <div class="world-stats">
                 <div class="stat">
                   <i class="fa-solid fa-medal"></i>
-                  <span>4 sports</span>
+                  <span>13 sports</span>
                 </div>
               </div>
               <div class="world-action">

@@ -104,12 +104,102 @@ const world = computed(() => summerWorldsStore.currentWorld)
 const loading = ref(true)
 
 const sports = ref([
+  // Athletics disciplines
+  {
+    id: 'running',
+    name: 'Running',
+    description: '100m, 200m, 400m, 800m, 1500m, 5000m, 10000m, Marathon',
+    icon: 'fa-solid fa-person-running',
+    gradient: 'linear-gradient(135deg, #f97316, #ea580c)',
+    enabled: false
+  },
+  {
+    id: 'hurdles',
+    name: 'Hurdles',
+    description: '100m/110m Hurdles, 400m Hurdles, 3000m Steeplechase',
+    icon: 'fa-solid fa-bars-staggered',
+    gradient: 'linear-gradient(135deg, #d97706, #b45309)',
+    enabled: false
+  },
+  {
+    id: 'relays',
+    name: 'Relays',
+    description: '4x100m, 4x400m relay events',
+    icon: 'fa-solid fa-people-group',
+    gradient: 'linear-gradient(135deg, #f59e0b, #d97706)',
+    enabled: false
+  },
+  {
+    id: 'jumps',
+    name: 'Jumps',
+    description: 'High Jump, Long Jump, Triple Jump, Pole Vault',
+    icon: 'fa-solid fa-arrow-up-long',
+    gradient: 'linear-gradient(135deg, #22c55e, #16a34a)',
+    enabled: false
+  },
+  {
+    id: 'throws',
+    name: 'Throws',
+    description: 'Shot Put, Discus, Javelin, Hammer Throw',
+    icon: 'fa-solid fa-bullseye',
+    gradient: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+    enabled: false
+  },
+  {
+    id: 'combined-events',
+    name: 'Combined Events',
+    description: 'Decathlon, Heptathlon',
+    icon: 'fa-solid fa-medal',
+    gradient: 'linear-gradient(135deg, #ec4899, #db2777)',
+    enabled: false
+  },
+  {
+    id: 'race-walking',
+    name: 'Race Walking',
+    description: '20km, 35km Race Walk',
+    icon: 'fa-solid fa-person-walking',
+    gradient: 'linear-gradient(135deg, #14b8a6, #0d9488)',
+    enabled: false
+  },
+  // Other summer sports
   {
     id: 'swimming',
     name: 'Swimming',
-    description: 'Olympic swimming, world championships, and aquatic events',
+    description: 'Freestyle, Backstroke, Breaststroke, Butterfly, Medley events',
     icon: 'fa-solid fa-person-swimming',
     gradient: 'linear-gradient(135deg, #60a5fa, #3b82f6)',
+    enabled: false
+  },
+  {
+    id: 'rowing',
+    name: 'Rowing',
+    description: 'Single sculls, doubles, fours, eights',
+    icon: 'fa-solid fa-water',
+    gradient: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+    enabled: false
+  },
+  {
+    id: 'surfing',
+    name: 'Surfing',
+    description: 'Shortboard surfing competition',
+    icon: 'fa-solid fa-water',
+    gradient: 'linear-gradient(135deg, #06b6d4, #0891b2)',
+    enabled: false
+  },
+  {
+    id: 'windsurfing',
+    name: 'Windsurfing',
+    description: 'iQFoil and freestyle windsurfing',
+    icon: 'fa-solid fa-wind',
+    gradient: 'linear-gradient(135deg, #38bdf8, #0ea5e9)',
+    enabled: false
+  },
+  {
+    id: 'sailing',
+    name: 'Sailing / Yachting',
+    description: 'Dinghy, keelboat, and multihull racing',
+    icon: 'fa-solid fa-sailboat',
+    gradient: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
     enabled: false
   }
 ])

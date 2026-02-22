@@ -2,9 +2,14 @@
   <div class="dashboard">
     <header class="dashboard-header">
       <div class="container header-content">
-        <div class="brand">
-          <i class="fa-solid fa-snowflake"></i>
-          <span>WinterSim</span>
+        <div class="brand-group">
+          <button @click="router.push('/modules')" class="btn btn-ghost back-btn" title="All Modules">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+          <div class="brand">
+            <i class="fa-solid fa-snowflake"></i>
+            <span>WinterSim</span>
+          </div>
         </div>
         <div class="user-menu">
           <span class="username">
@@ -392,6 +397,17 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.5rem;
+}
+
+.brand-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.back-btn {
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
 }
 
 .brand {

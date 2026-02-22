@@ -78,8 +78,8 @@ function simulateHockeyMatch(homeTeam, awayTeam, isPlayoff = false, detailed = f
   let overtime = false;
   let shootout = false;
 
-  // Playoff matches cannot end in a draw - need OT + possible shootout
-  if (isPlayoff && homeScore === awayScore) {
+  // IIHF rules: ALL matches must have a winner (OT + possible shootout)
+  if (homeScore === awayScore) {
     overtime = true;
     // 70% chance OT decides it, 30% goes to shootout
     if (Math.random() < 0.7) {
@@ -94,26 +94,6 @@ function simulateHockeyMatch(homeTeam, awayTeam, isPlayoff = false, detailed = f
       // Shootout
       shootout = true;
       const homeChance = (homeOffense + homeTeam.goaltending) / (homeOffense + homeTeam.goaltending + awayOffense + awayTeam.goaltending);
-      if (Math.random() < homeChance) {
-        homeScore++;
-      } else {
-        awayScore++;
-      }
-    }
-  }
-
-  // Group stage: draws are allowed but rare - use OT for bonus points
-  if (!isPlayoff && homeScore === awayScore && Math.random() < 0.6) {
-    overtime = true;
-    const homeChance = homeOffense / (homeOffense + awayOffense);
-    if (Math.random() < homeChance) {
-      homeScore++;
-    } else {
-      awayScore++;
-    }
-    // Could go to shootout
-    if (homeScore === awayScore && Math.random() < 0.3) {
-      shootout = true;
       if (Math.random() < homeChance) {
         homeScore++;
       } else {
