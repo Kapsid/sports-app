@@ -792,6 +792,495 @@ async function initializeDatabase() {
     )
   `);
 
+  // Handball specific tables
+
+  // Handball worlds table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS handball_worlds (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Handball teams table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS handball_teams (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      short_name TEXT NOT NULL,
+      city TEXT NOT NULL,
+      logo TEXT,
+      power INTEGER DEFAULT 70,
+      attack INTEGER DEFAULT 70,
+      defense INTEGER DEFAULT 70,
+      goalkeeper INTEGER DEFAULT 70,
+      form INTEGER DEFAULT 70,
+      is_user_team INTEGER DEFAULT 0,
+      league TEXT DEFAULT 'extraliga',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES handball_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Handball seasons table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS handball_seasons (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      year_start INTEGER NOT NULL,
+      year_end INTEGER NOT NULL,
+      status TEXT DEFAULT 'not_started',
+      phase TEXT DEFAULT 'regular',
+      current_round INTEGER DEFAULT 0,
+      standings TEXT DEFAULT '[]',
+      final_standings TEXT DEFAULT '[]',
+      playoff_bracket TEXT DEFAULT '[]',
+      playout_bracket TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES handball_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Handball matches table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS handball_matches (
+      id TEXT PRIMARY KEY,
+      season_id TEXT NOT NULL,
+      round INTEGER NOT NULL,
+      phase TEXT DEFAULT 'regular',
+      home_team_id TEXT NOT NULL,
+      away_team_id TEXT NOT NULL,
+      home_score INTEGER,
+      away_score INTEGER,
+      home_halftime INTEGER,
+      away_halftime INTEGER,
+      status TEXT DEFAULT 'scheduled',
+      match_events TEXT DEFAULT '[]',
+      date TEXT,
+      playoff_round TEXT,
+      series_index INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (season_id) REFERENCES handball_seasons(id) ON DELETE CASCADE,
+      FOREIGN KEY (home_team_id) REFERENCES handball_teams(id),
+      FOREIGN KEY (away_team_id) REFERENCES handball_teams(id)
+    )
+  `);
+
+  // Add league2_standings column to handball_seasons if not exists
+  try {
+    db.run('ALTER TABLE handball_seasons ADD COLUMN league2_standings TEXT DEFAULT \'[]\'');
+  } catch (e) {
+    // Column might already exist
+  }
+
+  // Add playout_data column to handball_seasons if not exists
+  try {
+    db.run('ALTER TABLE handball_seasons ADD COLUMN playout_data TEXT DEFAULT \'{}\'');
+  } catch (e) {
+    // Column might already exist
+  }
+
+  // Handball season history table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS handball_season_history (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      season_name TEXT NOT NULL,
+      year_start INTEGER NOT NULL,
+      year_end INTEGER NOT NULL,
+      champion_id TEXT NOT NULL,
+      champion_name TEXT NOT NULL,
+      runner_up_id TEXT NOT NULL,
+      runner_up_name TEXT NOT NULL,
+      third_place_id TEXT NOT NULL,
+      third_place_name TEXT NOT NULL,
+      final_standings TEXT DEFAULT '[]',
+      completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES handball_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Ice Hockey World Championship tables
+
+  // Hockey worlds table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hockey_worlds (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Hockey teams table (national teams)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hockey_teams (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      short_name TEXT NOT NULL,
+      country_code TEXT NOT NULL,
+      flag TEXT,
+      power INTEGER DEFAULT 70,
+      offense INTEGER DEFAULT 70,
+      defense INTEGER DEFAULT 70,
+      goaltending INTEGER DEFAULT 70,
+      form INTEGER DEFAULT 70,
+      division TEXT DEFAULT 'top',
+      group_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES hockey_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Hockey seasons table (each championship year)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hockey_seasons (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      status TEXT DEFAULT 'not_started',
+      phase TEXT DEFAULT 'group',
+      group_a_standings TEXT DEFAULT '[]',
+      group_b_standings TEXT DEFAULT '[]',
+      div2_standings TEXT DEFAULT '[]',
+      playoff_bracket TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES hockey_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Hockey matches table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hockey_matches (
+      id TEXT PRIMARY KEY,
+      season_id TEXT NOT NULL,
+      stage TEXT DEFAULT 'group',
+      group_name TEXT,
+      round_number INTEGER DEFAULT 1,
+      playoff_round TEXT,
+      home_team_id TEXT NOT NULL,
+      away_team_id TEXT NOT NULL,
+      home_score INTEGER,
+      away_score INTEGER,
+      overtime INTEGER DEFAULT 0,
+      shootout INTEGER DEFAULT 0,
+      period_scores TEXT DEFAULT '[]',
+      status TEXT DEFAULT 'scheduled',
+      match_events TEXT DEFAULT '[]',
+      date TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (season_id) REFERENCES hockey_seasons(id) ON DELETE CASCADE,
+      FOREIGN KEY (home_team_id) REFERENCES hockey_teams(id),
+      FOREIGN KEY (away_team_id) REFERENCES hockey_teams(id)
+    )
+  `);
+
+  // Migration: Add round_number column if it doesn't exist
+  try {
+    db.run(`ALTER TABLE hockey_matches ADD COLUMN round_number INTEGER DEFAULT 1`);
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Hockey season history table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hockey_season_history (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      gold_team_id TEXT NOT NULL,
+      gold_team_name TEXT NOT NULL,
+      silver_team_id TEXT NOT NULL,
+      silver_team_name TEXT NOT NULL,
+      bronze_team_id TEXT NOT NULL,
+      bronze_team_name TEXT NOT NULL,
+      promoted_teams TEXT DEFAULT '[]',
+      relegated_teams TEXT DEFAULT '[]',
+      final_standings TEXT DEFAULT '[]',
+      completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES hockey_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Summer Sports specific tables
+
+  // Summer Sports worlds table (separate from winter sports worlds)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS summer_worlds (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tennis specific tables
+
+  // Tennis worlds table (separate from winter sports worlds)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tennis_worlds (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tennis players table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tennis_players (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      country TEXT NOT NULL,
+      skill_serve INTEGER DEFAULT 70,
+      skill_forehand INTEGER DEFAULT 70,
+      skill_backhand INTEGER DEFAULT 70,
+      skill_volley INTEGER DEFAULT 70,
+      skill_movement INTEGER DEFAULT 70,
+      skill_mental INTEGER DEFAULT 70,
+      consistency INTEGER DEFAULT 70,
+      form INTEGER DEFAULT 70,
+      specialty TEXT DEFAULT 'all-round',
+      ranking_points INTEGER DEFAULT 0,
+      career_high_ranking INTEGER DEFAULT NULL,
+      career_titles INTEGER DEFAULT 0,
+      career_gs_titles INTEGER DEFAULT 0,
+      best_aus TEXT DEFAULT NULL,
+      best_fra TEXT DEFAULT NULL,
+      best_wim TEXT DEFAULT NULL,
+      best_uso TEXT DEFAULT NULL,
+      matches_won INTEGER DEFAULT 0,
+      matches_lost INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES tennis_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Add new columns to tennis_players if they don't exist (migrations)
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN career_high_ranking INTEGER DEFAULT NULL`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN career_titles INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN career_gs_titles INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN best_aus TEXT DEFAULT NULL`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN best_fra TEXT DEFAULT NULL`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN best_wim TEXT DEFAULT NULL`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN best_uso TEXT DEFAULT NULL`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN matches_won INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_players ADD COLUMN matches_lost INTEGER DEFAULT 0`); } catch (e) {}
+
+  // Tennis matches table for storing match history
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tennis_matches (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      round TEXT NOT NULL,
+      match_number INTEGER NOT NULL,
+      player1_id TEXT,
+      player2_id TEXT,
+      player1_seed INTEGER,
+      player2_seed INTEGER,
+      winner_id TEXT,
+      score TEXT,
+      sets TEXT,
+      best_of INTEGER DEFAULT 3,
+      status TEXT DEFAULT 'scheduled',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES tennis_events(id) ON DELETE CASCADE,
+      FOREIGN KEY (player1_id) REFERENCES tennis_players(id) ON DELETE SET NULL,
+      FOREIGN KEY (player2_id) REFERENCES tennis_players(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Add new columns to tennis_matches if they don't exist (migrations)
+  try { db.run(`ALTER TABLE tennis_matches ADD COLUMN player1_seed INTEGER`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_matches ADD COLUMN player2_seed INTEGER`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_matches ADD COLUMN best_of INTEGER DEFAULT 3`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_matches ADD COLUMN player1_rank INTEGER`); } catch (e) {}
+  try { db.run(`ALTER TABLE tennis_matches ADD COLUMN player2_rank INTEGER`); } catch (e) {}
+
+  // Tennis seasons table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tennis_seasons (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      status TEXT DEFAULT 'not_started',
+      current_event_index INTEGER DEFAULT 0,
+      standings TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES tennis_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Tennis tournaments/events table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tennis_events (
+      id TEXT PRIMARY KEY,
+      season_id TEXT NOT NULL,
+      event_index INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      location TEXT NOT NULL,
+      country TEXT NOT NULL,
+      surface TEXT NOT NULL,
+      tournament_type TEXT NOT NULL,
+      points INTEGER DEFAULT 0,
+      draw_size INTEGER DEFAULT 32,
+      date TEXT NOT NULL,
+      end_date TEXT,
+      status TEXT DEFAULT 'scheduled',
+      results TEXT DEFAULT '[]',
+      rounds TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (season_id) REFERENCES tennis_seasons(id) ON DELETE CASCADE
+    )
+  `);
+
+  // MMA specific tables
+
+  // MMA organizations table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mma_organizations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      short_name TEXT,
+      description TEXT,
+      event_count INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // MMA fighters table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mma_fighters (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      nickname TEXT,
+      gender TEXT DEFAULT 'men',
+      weight_class INTEGER NOT NULL,
+      country_code TEXT NOT NULL,
+      striking INTEGER DEFAULT 70,
+      grappling INTEGER DEFAULT 70,
+      wrestling INTEGER DEFAULT 70,
+      cardio INTEGER DEFAULT 70,
+      chin INTEGER DEFAULT 70,
+      power INTEGER DEFAULT 70,
+      wins INTEGER DEFAULT 0,
+      losses INTEGER DEFAULT 0,
+      draws INTEGER DEFAULT 0,
+      ko_wins INTEGER DEFAULT 0,
+      sub_wins INTEGER DEFAULT 0,
+      dec_wins INTEGER DEFAULT 0,
+      ranking INTEGER DEFAULT 99,
+      is_champion INTEGER DEFAULT 0,
+      title_defenses INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (org_id) REFERENCES mma_organizations(id) ON DELETE CASCADE
+    )
+  `);
+
+  // MMA events table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mma_events (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      event_number INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      city TEXT NOT NULL,
+      country TEXT NOT NULL,
+      venue TEXT,
+      theme_color TEXT DEFAULT '#dc2626',
+      theme_name TEXT,
+      theme_icon TEXT,
+      status TEXT DEFAULT 'scheduled',
+      date TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (org_id) REFERENCES mma_organizations(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Migration: Add theme_name and theme_icon columns to mma_events if not exists
+  try {
+    db.run('ALTER TABLE mma_events ADD COLUMN theme_name TEXT');
+  } catch (e) {
+    // Column might already exist
+  }
+  try {
+    db.run('ALTER TABLE mma_events ADD COLUMN theme_icon TEXT');
+  } catch (e) {
+    // Column might already exist
+  }
+
+  // Migration: Add win_streak and loss_streak columns to mma_fighters for form-based rankings
+  try {
+    db.run('ALTER TABLE mma_fighters ADD COLUMN win_streak INTEGER DEFAULT 0');
+  } catch (e) {
+    // Column might already exist
+  }
+  try {
+    db.run('ALTER TABLE mma_fighters ADD COLUMN loss_streak INTEGER DEFAULT 0');
+  } catch (e) {
+    // Column might already exist
+  }
+  // Migration: Add title_reigns column to track how many times fighter has been champion
+  try {
+    db.run('ALTER TABLE mma_fighters ADD COLUMN title_reigns INTEGER DEFAULT 0');
+  } catch (e) {
+    // Column might already exist
+  }
+
+  // MMA fights table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS mma_fights (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      fighter1_id TEXT NOT NULL,
+      fighter2_id TEXT NOT NULL,
+      card_position TEXT DEFAULT 'prelim',
+      fight_order INTEGER NOT NULL,
+      is_title_fight INTEGER DEFAULT 0,
+      weight_class INTEGER NOT NULL,
+      winner_id TEXT,
+      method TEXT,
+      round INTEGER,
+      time TEXT,
+      fight_stats TEXT DEFAULT '{}',
+      status TEXT DEFAULT 'scheduled',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES mma_events(id) ON DELETE CASCADE,
+      FOREIGN KEY (fighter1_id) REFERENCES mma_fighters(id),
+      FOREIGN KEY (fighter2_id) REFERENCES mma_fighters(id)
+    )
+  `);
+
   // Seed default sports if not exist
   const sports = [
     { id: 'ski-jumping', name: 'Ski Jumping', icon: 'fa-person-skiing', description: 'Compete in ski jumping competitions' },

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# WinterSim - Winter Sports Simulation App
+# SportsHub - Sports Simulation Platform
 # Run script for local development
 
 echo "=========================================="
-echo "   WinterSim - Winter Sports Simulation"
+echo "   SportsHub - Sports Simulation Platform"
 echo "=========================================="
 echo ""
 
@@ -28,7 +28,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Kill any existing processes on our ports
 echo -e "${BLUE}Checking for existing processes...${NC}"
-lsof -ti:3005 | xargs kill -9 2>/dev/null || true
+lsof -ti:3001 | xargs kill -9 2>/dev/null || true
 lsof -ti:5173 | xargs kill -9 2>/dev/null || true
 
 # Install backend dependencies
@@ -53,13 +53,13 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}Starting WinterSim...${NC}"
+echo -e "${GREEN}Starting SportsHub...${NC}"
 echo ""
 
 # Function to cleanup background processes
 cleanup() {
     echo ""
-    echo -e "${BLUE}Shutting down WinterSim...${NC}"
+    echo -e "${BLUE}Shutting down SportsHub...${NC}"
     kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
     exit 0
 }
@@ -75,7 +75,7 @@ BACKEND_PID=$!
 # Wait for backend to be ready
 echo -e "${BLUE}Waiting for backend to start...${NC}"
 for i in {1..30}; do
-    if curl -s http://localhost:3005/api/health > /dev/null 2>&1; then
+    if curl -s http://localhost:3001/api/health > /dev/null 2>&1; then
         echo -e "${GREEN}Backend is ready!${NC}"
         break
     fi
@@ -93,9 +93,9 @@ sleep 3
 
 echo ""
 echo "=========================================="
-echo -e "${GREEN}WinterSim is running!${NC}"
+echo -e "${GREEN}SportsHub is running!${NC}"
 echo ""
-echo -e "Backend API:  ${BLUE}http://localhost:3005${NC}"
+echo -e "Backend API:  ${BLUE}http://localhost:3001${NC}"
 echo -e "Frontend:     ${BLUE}http://localhost:5173${NC}"
 echo ""
 echo "Press Ctrl+C to stop all servers"

@@ -1,7 +1,7 @@
 {
-  "name": "wintersim-app",
+  "name": "sportshub-app",
   "version": "1.0.0",
-  "description": "Winter Sports Simulation Application",
+  "description": "SportsHub - Sports Simulation Platform",
   "scripts": {
     "install:all": "cd backend && npm install && cd ../frontend && npm install",
     "build": "cd frontend && npm install && npm run build",
