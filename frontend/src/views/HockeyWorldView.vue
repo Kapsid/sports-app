@@ -22,6 +22,14 @@
             <span v-else>Tournament</span>
           </button>
           <button
+            @click="activeTab = 'rankings'"
+            class="tab-btn"
+            :class="{ active: activeTab === 'rankings' }"
+          >
+            <i class="fa-solid fa-ranking-star"></i>
+            Rankings
+          </button>
+          <button
             @click="activeTab = 'history'; loadHistory()"
             class="tab-btn"
             :class="{ active: activeTab === 'history' }"
@@ -73,11 +81,28 @@
 
             <!-- Tournament Active -->
             <template v-else>
+              <!-- Historic viewing banner -->
+              <div v-if="viewingHistoric" class="historic-banner">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                Viewing {{ historicYear }} Championship
+                <button @click="backToCurrent" class="btn btn-sm btn-secondary historic-back-btn">
+                  <i class="fa-solid fa-arrow-left"></i>
+                  Back to current
+                </button>
+              </div>
+
               <!-- Phase Banner -->
               <div class="phase-banner" :class="season.phase">
-                <i :class="season.phase === 'group' ? 'fa-solid fa-layer-group' : 'fa-solid fa-trophy'"></i>
-                <span v-if="season.phase === 'group'">Group Stage</span>
-                <span v-else>Playoff Stage</span>
+                <div class="phase-main">
+                  <i :class="season.phase === 'group' ? 'fa-solid fa-layer-group' : 'fa-solid fa-trophy'"></i>
+                  <span v-if="season.phase === 'group'">Group Stage</span>
+                  <span v-else>Playoff Stage</span>
+                </div>
+                <div v-if="season.hostCountry" class="phase-host">
+                  <i class="fa-solid fa-location-dot"></i>
+                  <img v-if="season.hostCountryCode" :src="getFlag(season.hostCountryCode)" class="host-flag" />
+                  {{ season.hostCities ? season.hostCities.join(', ') : '' }} ({{ season.hostCountry }})
+                </div>
               </div>
 
               <!-- Group Stage -->
@@ -99,6 +124,30 @@
                   >
                     <i class="fa-solid fa-hockey-puck"></i>
                     Matches
+                  </button>
+                  <button
+                    @click="groupTab = 'scorers'; loadStats()"
+                    class="sub-tab"
+                    :class="{ active: groupTab === 'scorers' }"
+                  >
+                    <i class="fa-solid fa-chart-bar"></i>
+                    Scorers
+                  </button>
+                  <button
+                    @click="groupTab = 'rosters'"
+                    class="sub-tab"
+                    :class="{ active: groupTab === 'rosters' }"
+                  >
+                    <i class="fa-solid fa-users"></i>
+                    Rosters
+                  </button>
+                  <button
+                    @click="groupTab = 'allstars'"
+                    class="sub-tab"
+                    :class="{ active: groupTab === 'allstars' }"
+                  >
+                    <i class="fa-solid fa-star"></i>
+                    All-Stars
                   </button>
                   <button
                     @click="groupTab = 'division2'"
@@ -145,7 +194,7 @@
                             >
                               <td class="pos">{{ index + 1 }}</td>
                               <td class="team">
-                                <div class="team-cell">
+                                <div class="team-cell team-link" @click.stop="openTeamRoster(team.teamId)">
                                   <img :src="getFlag(team.flag || team.countryCode)" :alt="team.teamName" class="team-flag" />
                                   <span>{{ team.teamName }}</span>
                                 </div>
@@ -196,7 +245,7 @@
                             >
                               <td class="pos">{{ index + 1 }}</td>
                               <td class="team">
-                                <div class="team-cell">
+                                <div class="team-cell team-link" @click.stop="openTeamRoster(team.teamId)">
                                   <img :src="getFlag(team.flag || team.countryCode)" :alt="team.teamName" class="team-flag" />
                                   <span>{{ team.teamName }}</span>
                                 </div>
@@ -228,23 +277,28 @@
 
                 <!-- Matches Tab -->
                 <div v-if="groupTab === 'matches'" class="tab-content">
-                  <!-- Round Slider -->
-                  <div class="round-slider-container">
-                    <label class="round-label">Round {{ selectedRound }} of {{ totalRounds }}</label>
-                    <div class="round-slider-wrapper">
-                      <button @click="selectedRound = Math.max(1, selectedRound - 1)" class="round-btn" :disabled="selectedRound <= 1">
-                        <i class="fa-solid fa-chevron-left"></i>
+                  <!-- Matchday Selector -->
+                  <div class="round-selector-container">
+                    <label class="round-label">Matchday {{ selectedRound }} of {{ totalRounds }}</label>
+                    <div class="round-buttons">
+                      <button
+                        v-for="round in totalRounds"
+                        :key="round"
+                        @click="selectedRound = round"
+                        class="round-dot"
+                        :class="{
+                          active: selectedRound === round,
+                          completed: isRoundCompleted(round),
+                          current: round === activeRound
+                        }"
+                        :title="'Matchday ' + round + (isRoundCompleted(round) ? ' (completed)' : round === activeRound ? ' (active)' : '')"
+                      >
+                        <span class="round-number">{{ round }}</span>
+                        <i v-if="isRoundCompleted(round) && selectedRound !== round" class="fa-solid fa-check round-check"></i>
                       </button>
-                      <input
-                        type="range"
-                        v-model.number="selectedRound"
-                        :min="1"
-                        :max="totalRounds"
-                        class="round-slider"
-                      />
-                      <button @click="selectedRound = Math.min(totalRounds, selectedRound + 1)" class="round-btn" :disabled="selectedRound >= totalRounds">
-                        <i class="fa-solid fa-chevron-right"></i>
-                      </button>
+                    </div>
+                    <div class="round-progress-bar">
+                      <div class="round-progress-fill" :style="{ width: groupProgress + '%' }"></div>
                     </div>
                   </div>
 
@@ -259,7 +313,8 @@
                           v-for="match in currentRoundGroupAMatches"
                           :key="match.id"
                           class="match-card"
-                          :class="{ completed: match.status === 'completed' }"
+                          :class="{ completed: match.status === 'completed', clickable: match.status === 'completed' }"
+                          @click="match.status === 'completed' && openMatchDetail(match.id)"
                         >
                           <div class="team home">
                             <img :src="getFlag(match.home_team_flag)" :alt="match.home_team_short" class="match-flag" />
@@ -311,7 +366,8 @@
                           v-for="match in currentRoundGroupBMatches"
                           :key="match.id"
                           class="match-card"
-                          :class="{ completed: match.status === 'completed' }"
+                          :class="{ completed: match.status === 'completed', clickable: match.status === 'completed' }"
+                          @click="match.status === 'completed' && openMatchDetail(match.id)"
                         >
                           <div class="team home">
                             <img :src="getFlag(match.home_team_flag)" :alt="match.home_team_short" class="match-flag" />
@@ -420,8 +476,238 @@
                   </div>
                 </div>
 
+                <!-- Scorers Tab -->
+                <div v-if="groupTab === 'scorers'" class="tab-content">
+                  <div class="group-panel fade-in">
+                    <div class="panel-header">
+                      <h2>
+                        <i class="fa-solid fa-chart-bar"></i>
+                        {{ season ? season.year + ' ' : '' }}Scoring Leaders
+                      </h2>
+                    </div>
+                    <div v-if="tournamentStats.length > 0" class="standings-table-wrapper">
+                      <table class="standings-table">
+                        <thead>
+                          <tr>
+                            <th class="pos">#</th>
+                            <th class="team">Player</th>
+                            <th>Team</th>
+                            <th>Pos</th>
+                            <th>G</th>
+                            <th>A</th>
+                            <th class="pts">Pts</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="(stat, index) in tournamentStats.slice(0, 30)" :key="stat.playerId">
+                            <td class="pos">{{ index + 1 }}</td>
+                            <td class="team">
+                              <div class="team-cell team-link" @click="openPlayerDetail(stat.playerId)">
+                                <span class="jersey-num">#{{ stat.jerseyNumber }}</span>
+                                <span>{{ stat.playerName }}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <div class="team-cell team-link" @click="openTeamRoster(stat.teamId)">
+                                <img :src="getFlag(stat.countryCode || stat.teamName)" :alt="stat.teamName" class="team-flag" />
+                                <span>{{ stat.teamName }}</span>
+                              </div>
+                            </td>
+                            <td>{{ stat.position || '-' }}</td>
+                            <td>{{ stat.goals }}</td>
+                            <td>{{ stat.assists }}</td>
+                            <td class="pts">{{ stat.points }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div v-else class="empty-div2">
+                      <i class="fa-solid fa-circle-info"></i>
+                      <p>No matches have been played yet. Simulate some matches to see scoring stats.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Rosters Tab -->
+                <div v-if="groupTab === 'rosters'" class="tab-content">
+                  <div class="group-panel fade-in">
+                    <div class="panel-header">
+                      <h2>
+                        <i class="fa-solid fa-users"></i>
+                        Team Rosters
+                      </h2>
+                    </div>
+                    <div class="roster-selector">
+                      <select v-model="selectedRosterTeamId" @change="loadTeamRoster" class="roster-dropdown">
+                        <option value="">Select a team...</option>
+                        <option v-for="team in allTeams" :key="team.id" :value="team.id">
+                          {{ team.name }} ({{ team.short_name }})
+                        </option>
+                      </select>
+                    </div>
+                    <div v-if="teamRoster && teamRoster.players && teamRoster.players.length > 0">
+                      <div class="roster-section">
+                        <h4 class="roster-position-header">Goalkeepers</h4>
+                        <table class="standings-table roster-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th class="team">Name</th>
+                              <th>SHO</th>
+                              <th>SKA</th>
+                              <th>PAS</th>
+                              <th>DEF</th>
+                              <th>PHY</th>
+                              <th>G</th>
+                              <th>A</th>
+                              <th class="pts">Pts</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="p in rosterGoalies" :key="p.id">
+                              <td class="jersey">{{ p.jersey_number }}</td>
+                              <td class="team"><span class="team-link" @click="openPlayerDetail(p.id)">{{ p.first_name }} {{ p.last_name }}</span></td>
+                              <td>{{ p.shooting }}</td>
+                              <td>{{ p.skating }}</td>
+                              <td>{{ p.passing }}</td>
+                              <td>{{ p.defense_skill }}</td>
+                              <td>{{ p.physical }}</td>
+                              <td>{{ playerStat(p.id, 'goals') }}</td>
+                              <td>{{ playerStat(p.id, 'assists') }}</td>
+                              <td class="pts">{{ playerStat(p.id, 'points') }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="roster-section">
+                        <h4 class="roster-position-header">Defensemen</h4>
+                        <table class="standings-table roster-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th class="team">Name</th>
+                              <th>SHO</th>
+                              <th>SKA</th>
+                              <th>PAS</th>
+                              <th>DEF</th>
+                              <th>PHY</th>
+                              <th>G</th>
+                              <th>A</th>
+                              <th class="pts">Pts</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="p in rosterDefensemen" :key="p.id">
+                              <td class="jersey">{{ p.jersey_number }}</td>
+                              <td class="team"><span class="team-link" @click="openPlayerDetail(p.id)">{{ p.first_name }} {{ p.last_name }}</span></td>
+                              <td>{{ p.shooting }}</td>
+                              <td>{{ p.skating }}</td>
+                              <td>{{ p.passing }}</td>
+                              <td>{{ p.defense_skill }}</td>
+                              <td>{{ p.physical }}</td>
+                              <td>{{ playerStat(p.id, 'goals') }}</td>
+                              <td>{{ playerStat(p.id, 'assists') }}</td>
+                              <td class="pts">{{ playerStat(p.id, 'points') }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="roster-section">
+                        <h4 class="roster-position-header">Forwards</h4>
+                        <table class="standings-table roster-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th class="team">Name</th>
+                              <th>SHO</th>
+                              <th>SKA</th>
+                              <th>PAS</th>
+                              <th>DEF</th>
+                              <th>PHY</th>
+                              <th>G</th>
+                              <th>A</th>
+                              <th class="pts">Pts</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="p in rosterForwards" :key="p.id">
+                              <td class="jersey">{{ p.jersey_number }}</td>
+                              <td class="team"><span class="team-link" @click="openPlayerDetail(p.id)">{{ p.first_name }} {{ p.last_name }}</span></td>
+                              <td>{{ p.shooting }}</td>
+                              <td>{{ p.skating }}</td>
+                              <td>{{ p.passing }}</td>
+                              <td>{{ p.defense_skill }}</td>
+                              <td>{{ p.physical }}</td>
+                              <td>{{ playerStat(p.id, 'goals') }}</td>
+                              <td>{{ playerStat(p.id, 'assists') }}</td>
+                              <td class="pts">{{ playerStat(p.id, 'points') }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <div v-else-if="selectedRosterTeamId && (!teamRoster || teamRoster.players?.length === 0)" class="empty-div2">
+                      <i class="fa-solid fa-circle-info"></i>
+                      <p>No players found. Try resetting the world to generate player rosters.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- All-Stars Tab -->
+                <div v-if="groupTab === 'allstars'" class="tab-content">
+                  <div class="group-panel fade-in">
+                    <div class="panel-header">
+                      <h2>
+                        <i class="fa-solid fa-star"></i>
+                        {{ season ? season.year + ' ' : '' }}Tournament All-Stars
+                      </h2>
+                    </div>
+                    <div v-if="allStars" class="allstars-grid">
+                      <div v-if="allStars.mvpForward" class="allstar-card">
+                        <div class="allstar-label">Best Forward</div>
+                        <div class="allstar-name">#{{ allStars.mvpForward.jerseyNumber }} {{ allStars.mvpForward.playerName }}</div>
+                        <div class="allstar-team">
+                          <img :src="getFlag(allStars.mvpForward.countryCode || allStars.mvpForward.teamName)" class="team-flag" />
+                          {{ allStars.mvpForward.teamName }}
+                        </div>
+                        <div class="allstar-stats">{{ allStars.mvpForward.goals }}G {{ allStars.mvpForward.assists }}A - {{ allStars.mvpForward.points }}Pts</div>
+                      </div>
+                      <div v-if="allStars.mvpDefenseman" class="allstar-card">
+                        <div class="allstar-label">Best Defenseman</div>
+                        <div class="allstar-name">#{{ allStars.mvpDefenseman.jerseyNumber }} {{ allStars.mvpDefenseman.playerName }}</div>
+                        <div class="allstar-team">
+                          <img :src="getFlag(allStars.mvpDefenseman.countryCode || allStars.mvpDefenseman.teamName)" class="team-flag" />
+                          {{ allStars.mvpDefenseman.teamName }}
+                        </div>
+                        <div class="allstar-stats">{{ allStars.mvpDefenseman.goals }}G {{ allStars.mvpDefenseman.assists }}A - {{ allStars.mvpDefenseman.points }}Pts</div>
+                      </div>
+                      <div v-if="allStars.mvpGoalie" class="allstar-card">
+                        <div class="allstar-label">Best Goaltender</div>
+                        <div class="allstar-name">#{{ allStars.mvpGoalie.jerseyNumber }} {{ allStars.mvpGoalie.playerName }}</div>
+                        <div class="allstar-team">
+                          <img :src="getFlag(allStars.mvpGoalie.countryCode || allStars.mvpGoalie.teamName)" class="team-flag" />
+                          {{ allStars.mvpGoalie.teamName }}
+                        </div>
+                      </div>
+                      <div v-if="allStars.topScorer" class="allstar-card gold-card">
+                        <div class="allstar-label">Top Scorer</div>
+                        <div class="allstar-name">#{{ allStars.topScorer.jerseyNumber }} {{ allStars.topScorer.playerName }}</div>
+                        <div class="allstar-team">
+                          <img :src="getFlag(allStars.topScorer.countryCode || allStars.topScorer.teamName)" class="team-flag" />
+                          {{ allStars.topScorer.teamName }}
+                        </div>
+                        <div class="allstar-stats">{{ allStars.topScorer.goals }}G {{ allStars.topScorer.assists }}A - {{ allStars.topScorer.points }}Pts</div>
+                      </div>
+                    </div>
+                    <div v-else class="empty-div2">
+                      <i class="fa-solid fa-circle-info"></i>
+                      <p>All-Stars are selected after the championship is completed.</p>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Simulate All / Start Playoffs -->
-                <div class="actions-bar">
+                <div class="actions-bar" v-if="!viewingHistoric && (groupTab === 'standings' || groupTab === 'matches' || groupTab === 'division2')">
                   <button
                     @click="simulateAllGroups"
                     class="btn btn-secondary btn-lg"
@@ -446,7 +732,200 @@
 
               <!-- Playoff Stage -->
               <div v-else class="playoffs-container">
-                <div class="bracket-section">
+                <div class="sub-tabs">
+                  <button
+                    @click="groupTab = 'bracket'"
+                    class="sub-tab"
+                    :class="{ active: groupTab === 'bracket' }"
+                  >
+                    <i class="fa-solid fa-sitemap"></i>
+                    Bracket
+                  </button>
+                  <button
+                    @click="groupTab = 'scorers'; loadStats()"
+                    class="sub-tab"
+                    :class="{ active: groupTab === 'scorers' }"
+                  >
+                    <i class="fa-solid fa-chart-bar"></i>
+                    Scorers
+                  </button>
+                  <button
+                    @click="groupTab = 'rosters'"
+                    class="sub-tab"
+                    :class="{ active: groupTab === 'rosters' }"
+                  >
+                    <i class="fa-solid fa-users"></i>
+                    Rosters
+                  </button>
+                  <button
+                    @click="groupTab = 'allstars'"
+                    class="sub-tab"
+                    :class="{ active: groupTab === 'allstars' }"
+                  >
+                    <i class="fa-solid fa-star"></i>
+                    All-Stars
+                  </button>
+                </div>
+
+                <!-- Scorers Tab (Playoff) -->
+                <div v-if="groupTab === 'scorers'" class="tab-content">
+                  <div class="group-panel fade-in">
+                    <div class="panel-header">
+                      <h2>
+                        <i class="fa-solid fa-chart-bar"></i>
+                        {{ season ? season.year + ' ' : '' }}Scoring Leaders
+                      </h2>
+                    </div>
+                    <div v-if="tournamentStats.length > 0" class="standings-table-wrapper">
+                      <table class="standings-table">
+                        <thead>
+                          <tr>
+                            <th class="pos">#</th>
+                            <th class="team">Player</th>
+                            <th>Team</th>
+                            <th>Pos</th>
+                            <th>G</th>
+                            <th>A</th>
+                            <th class="pts">Pts</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="(stat, index) in tournamentStats.slice(0, 30)" :key="stat.playerId">
+                            <td class="pos">{{ index + 1 }}</td>
+                            <td class="team">
+                              <div class="team-cell team-link" @click="openPlayerDetail(stat.playerId)">
+                                <span class="jersey-num">#{{ stat.jerseyNumber }}</span>
+                                <span>{{ stat.playerName }}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <div class="team-cell team-link" @click="openTeamRoster(stat.teamId)">
+                                <img :src="getFlag(stat.countryCode || stat.teamName)" :alt="stat.teamName" class="team-flag" />
+                                <span>{{ stat.teamName }}</span>
+                              </div>
+                            </td>
+                            <td>{{ stat.position || '-' }}</td>
+                            <td>{{ stat.goals }}</td>
+                            <td>{{ stat.assists }}</td>
+                            <td class="pts">{{ stat.points }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div v-else class="empty-div2">
+                      <i class="fa-solid fa-circle-info"></i>
+                      <p>No matches have been played yet.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Rosters Tab (Playoff) -->
+                <div v-if="groupTab === 'rosters'" class="tab-content">
+                  <div class="group-panel fade-in">
+                    <div class="panel-header">
+                      <h2>
+                        <i class="fa-solid fa-users"></i>
+                        Team Rosters
+                      </h2>
+                    </div>
+                    <div class="roster-selector">
+                      <select v-model="selectedRosterTeamId" @change="loadTeamRoster" class="roster-dropdown">
+                        <option value="">Select a team...</option>
+                        <option v-for="team in allTeams" :key="team.id" :value="team.id">
+                          {{ team.name }} ({{ team.short_name }})
+                        </option>
+                      </select>
+                    </div>
+                    <div v-if="teamRoster && teamRoster.players && teamRoster.players.length > 0">
+                      <div class="roster-section">
+                        <h4 class="roster-position-header">Goalkeepers</h4>
+                        <table class="standings-table roster-table">
+                          <thead><tr><th>#</th><th class="team">Name</th><th>SHO</th><th>SKA</th><th>PAS</th><th>DEF</th><th>PHY</th><th>G</th><th>A</th><th class="pts">Pts</th></tr></thead>
+                          <tbody>
+                            <tr v-for="p in rosterGoalies" :key="p.id">
+                              <td class="jersey">{{ p.jersey_number }}</td><td class="team"><span class="team-link" @click="openPlayerDetail(p.id)">{{ p.first_name }} {{ p.last_name }}</span></td>
+                              <td>{{ p.shooting }}</td><td>{{ p.skating }}</td><td>{{ p.passing }}</td><td>{{ p.defense_skill }}</td><td>{{ p.physical }}</td>
+                              <td>{{ playerStat(p.id, 'goals') }}</td><td>{{ playerStat(p.id, 'assists') }}</td><td class="pts">{{ playerStat(p.id, 'points') }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="roster-section">
+                        <h4 class="roster-position-header">Defensemen</h4>
+                        <table class="standings-table roster-table">
+                          <thead><tr><th>#</th><th class="team">Name</th><th>SHO</th><th>SKA</th><th>PAS</th><th>DEF</th><th>PHY</th><th>G</th><th>A</th><th class="pts">Pts</th></tr></thead>
+                          <tbody>
+                            <tr v-for="p in rosterDefensemen" :key="p.id">
+                              <td class="jersey">{{ p.jersey_number }}</td><td class="team"><span class="team-link" @click="openPlayerDetail(p.id)">{{ p.first_name }} {{ p.last_name }}</span></td>
+                              <td>{{ p.shooting }}</td><td>{{ p.skating }}</td><td>{{ p.passing }}</td><td>{{ p.defense_skill }}</td><td>{{ p.physical }}</td>
+                              <td>{{ playerStat(p.id, 'goals') }}</td><td>{{ playerStat(p.id, 'assists') }}</td><td class="pts">{{ playerStat(p.id, 'points') }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="roster-section">
+                        <h4 class="roster-position-header">Forwards</h4>
+                        <table class="standings-table roster-table">
+                          <thead><tr><th>#</th><th class="team">Name</th><th>SHO</th><th>SKA</th><th>PAS</th><th>DEF</th><th>PHY</th><th>G</th><th>A</th><th class="pts">Pts</th></tr></thead>
+                          <tbody>
+                            <tr v-for="p in rosterForwards" :key="p.id">
+                              <td class="jersey">{{ p.jersey_number }}</td><td class="team"><span class="team-link" @click="openPlayerDetail(p.id)">{{ p.first_name }} {{ p.last_name }}</span></td>
+                              <td>{{ p.shooting }}</td><td>{{ p.skating }}</td><td>{{ p.passing }}</td><td>{{ p.defense_skill }}</td><td>{{ p.physical }}</td>
+                              <td>{{ playerStat(p.id, 'goals') }}</td><td>{{ playerStat(p.id, 'assists') }}</td><td class="pts">{{ playerStat(p.id, 'points') }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <div v-else-if="selectedRosterTeamId && (!teamRoster || teamRoster.players?.length === 0)" class="empty-div2">
+                      <i class="fa-solid fa-circle-info"></i>
+                      <p>No players found. Try resetting the world to generate player rosters.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- All-Stars Tab (Playoff) -->
+                <div v-if="groupTab === 'allstars'" class="tab-content">
+                  <div class="group-panel fade-in">
+                    <div class="panel-header">
+                      <h2>
+                        <i class="fa-solid fa-star"></i>
+                        {{ season ? season.year + ' ' : '' }}Tournament All-Stars
+                      </h2>
+                    </div>
+                    <div v-if="allStars" class="allstars-grid">
+                      <div v-if="allStars.mvpForward" class="allstar-card">
+                        <div class="allstar-label">Best Forward</div>
+                        <div class="allstar-name">#{{ allStars.mvpForward.jerseyNumber }} {{ allStars.mvpForward.playerName }}</div>
+                        <div class="allstar-team"><img :src="getFlag(allStars.mvpForward.countryCode || allStars.mvpForward.teamName)" class="team-flag" /> {{ allStars.mvpForward.teamName }}</div>
+                        <div class="allstar-stats">{{ allStars.mvpForward.goals }}G {{ allStars.mvpForward.assists }}A - {{ allStars.mvpForward.points }}Pts</div>
+                      </div>
+                      <div v-if="allStars.mvpDefenseman" class="allstar-card">
+                        <div class="allstar-label">Best Defenseman</div>
+                        <div class="allstar-name">#{{ allStars.mvpDefenseman.jerseyNumber }} {{ allStars.mvpDefenseman.playerName }}</div>
+                        <div class="allstar-team"><img :src="getFlag(allStars.mvpDefenseman.countryCode || allStars.mvpDefenseman.teamName)" class="team-flag" /> {{ allStars.mvpDefenseman.teamName }}</div>
+                        <div class="allstar-stats">{{ allStars.mvpDefenseman.goals }}G {{ allStars.mvpDefenseman.assists }}A - {{ allStars.mvpDefenseman.points }}Pts</div>
+                      </div>
+                      <div v-if="allStars.mvpGoalie" class="allstar-card">
+                        <div class="allstar-label">Best Goaltender</div>
+                        <div class="allstar-name">#{{ allStars.mvpGoalie.jerseyNumber }} {{ allStars.mvpGoalie.playerName }}</div>
+                        <div class="allstar-team"><img :src="getFlag(allStars.mvpGoalie.countryCode || allStars.mvpGoalie.teamName)" class="team-flag" /> {{ allStars.mvpGoalie.teamName }}</div>
+                      </div>
+                      <div v-if="allStars.topScorer" class="allstar-card gold-card">
+                        <div class="allstar-label">Top Scorer</div>
+                        <div class="allstar-name">#{{ allStars.topScorer.jerseyNumber }} {{ allStars.topScorer.playerName }}</div>
+                        <div class="allstar-team"><img :src="getFlag(allStars.topScorer.countryCode || allStars.topScorer.teamName)" class="team-flag" /> {{ allStars.topScorer.teamName }}</div>
+                        <div class="allstar-stats">{{ allStars.topScorer.goals }}G {{ allStars.topScorer.assists }}A - {{ allStars.topScorer.points }}Pts</div>
+                      </div>
+                    </div>
+                    <div v-else class="empty-div2">
+                      <i class="fa-solid fa-circle-info"></i>
+                      <p>All-Stars are selected after the championship is completed.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="groupTab === 'bracket'" class="bracket-section">
                   <h3>Playoff Bracket</h3>
                   <div class="bracket">
                     <!-- Quarterfinals -->
@@ -457,7 +936,8 @@
                           v-for="(match, idx) in playoffMatches.quarterfinal"
                           :key="'qf-' + idx"
                           class="bracket-match"
-                          :class="{ completed: match.status === 'completed' }"
+                          :class="{ completed: match.status === 'completed', clickable: match.status === 'completed' }"
+                          @click="match.status === 'completed' && openMatchDetail(match.id)"
                         >
                           <div class="bracket-team" :class="{ winner: match.status === 'completed' && match.home_score > match.away_score }">
                             <img :src="getFlag(match.home_team_flag)" class="bracket-flag" />
@@ -499,7 +979,8 @@
                           v-for="(match, idx) in playoffMatches.semifinal"
                           :key="'sf-' + idx"
                           class="bracket-match"
-                          :class="{ completed: match.status === 'completed' }"
+                          :class="{ completed: match.status === 'completed', clickable: match.status === 'completed' }"
+                          @click="match.status === 'completed' && openMatchDetail(match.id)"
                         >
                           <div class="bracket-team" :class="{ winner: match.status === 'completed' && match.home_score > match.away_score }">
                             <img :src="getFlag(match.home_team_flag)" class="bracket-flag" />
@@ -541,7 +1022,8 @@
                         <div
                           v-if="playoffMatches.bronze.length > 0"
                           class="bracket-match bronze"
-                          :class="{ completed: playoffMatches.bronze[0].status === 'completed' }"
+                          :class="{ completed: playoffMatches.bronze[0].status === 'completed', clickable: playoffMatches.bronze[0].status === 'completed' }"
+                          @click="playoffMatches.bronze[0].status === 'completed' && openMatchDetail(playoffMatches.bronze[0].id)"
                         >
                           <div class="match-label">Bronze</div>
                           <div class="bracket-team" :class="{ winner: playoffMatches.bronze[0].status === 'completed' && playoffMatches.bronze[0].home_score > playoffMatches.bronze[0].away_score }">
@@ -578,7 +1060,8 @@
                         <div
                           v-if="playoffMatches.final.length > 0"
                           class="bracket-match final"
-                          :class="{ completed: playoffMatches.final[0].status === 'completed' }"
+                          :class="{ completed: playoffMatches.final[0].status === 'completed', clickable: playoffMatches.final[0].status === 'completed' }"
+                          @click="playoffMatches.final[0].status === 'completed' && openMatchDetail(playoffMatches.final[0].id)"
                         >
                           <div class="match-label gold">Final</div>
                           <div class="bracket-team" :class="{ winner: playoffMatches.final[0].status === 'completed' && playoffMatches.final[0].home_score > playoffMatches.final[0].away_score }">
@@ -615,76 +1098,196 @@
                   </div>
                 </div>
 
-                <!-- Relegation Info -->
-                <div v-if="playoffBracket && playoffBracket.relegatedTeams" class="relegation-section">
-                  <h3>Relegation</h3>
-                  <div class="relegation-info">
-                    <div class="relegated-teams">
-                      <span class="label">Relegated to Division II:</span>
-                      <div class="team-badges">
-                        <span v-for="team in playoffBracket.relegatedTeams" :key="team.teamId" class="team-badge relegated">
-                          {{ team.teamName }}
-                        </span>
+                  <!-- Relegation Info -->
+                  <div v-if="playoffBracket && playoffBracket.relegatedTeams" class="relegation-section">
+                    <h3>Relegation</h3>
+                    <div class="relegation-info">
+                      <div class="relegated-teams">
+                        <span class="label">Relegated to Division II:</span>
+                        <div class="team-badges">
+                          <span v-for="team in playoffBracket.relegatedTeams" :key="team.teamId" class="team-badge relegated">
+                            {{ team.teamName }}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <div v-if="playoffBracket.promotedTeams" class="promoted-teams">
-                      <span class="label">Promoted from Division II:</span>
-                      <div class="team-badges">
-                        <span v-for="team in playoffBracket.promotedTeams" :key="team.teamName" class="team-badge promoted">
-                          {{ team.teamName }}
-                        </span>
+                      <div v-if="playoffBracket.promotedTeams" class="promoted-teams">
+                        <span class="label">Promoted from Division II:</span>
+                        <div class="team-badges">
+                          <span v-for="team in playoffBracket.promotedTeams" :key="team.teamName" class="team-badge promoted">
+                            {{ team.teamName }}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <!-- Championship Complete -->
-                <div v-if="season.status === 'completed'" class="championship-complete">
-                  <h2><i class="fa-solid fa-trophy gold"></i> Championship Complete!</h2>
-                  <button @click="handleCreateSeason" class="btn btn-primary btn-lg" :disabled="creatingSeason">
-                    <i v-if="creatingSeason" class="fa-solid fa-spinner fa-spin"></i>
-                    <i v-else class="fa-solid fa-forward"></i>
-                    {{ creatingSeason ? 'Creating...' : 'Start Next Championship' }}
-                  </button>
-                </div>
+                  <!-- Championship Complete -->
+                  <div v-if="season.status === 'completed' && !viewingHistoric" class="championship-complete">
+                    <h2><i class="fa-solid fa-trophy gold"></i> Championship Complete!</h2>
+                    <button @click="handleCreateSeason" class="btn btn-primary btn-lg" :disabled="creatingSeason">
+                      <i v-if="creatingSeason" class="fa-solid fa-spinner fa-spin"></i>
+                      <i v-else class="fa-solid fa-forward"></i>
+                      {{ creatingSeason ? 'Creating...' : 'Start Next Championship' }}
+                    </button>
+                  </div>
               </div>
 
             </template>
           </template>
 
+          <!-- Rankings Tab (Top-Level) -->
+          <template v-if="activeTab === 'rankings'">
+            <div class="group-panel fade-in">
+              <div class="panel-header">
+                <h2>
+                  <i class="fa-solid fa-ranking-star"></i>
+                  World Rankings
+                </h2>
+              </div>
+              <div v-if="rankedTeams.length > 0" class="standings-table-wrapper">
+                <table class="standings-table">
+                  <thead>
+                    <tr>
+                      <th class="pos">#</th>
+                      <th class="team">Team</th>
+                      <th>PWR</th>
+                      <th>Group</th>
+                      <th>Division</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="team in rankedTeams" :key="team.id" :class="{ 'relegated': team.division === 'div2' }">
+                      <td class="pos">{{ team.world_ranking }}</td>
+                      <td class="team">
+                        <img :src="getFlag(team.flag || team.country_code)" :alt="team.short_name" class="team-flag" />
+                        {{ team.name }}
+                      </td>
+                      <td>{{ team.power }}</td>
+                      <td>{{ team.group_name || '-' }}</td>
+                      <td>
+                        <span :class="['division-badge', team.division === 'top' ? 'div-top' : 'div-2']">
+                          {{ team.division === 'top' ? 'Top' : 'Div II' }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-else class="empty-div2">
+                <i class="fa-solid fa-circle-info"></i>
+                <p>No ranking data available.</p>
+              </div>
+            </div>
+          </template>
+
           <!-- History Tab -->
           <template v-if="activeTab === 'history'">
-            <div class="history-panel fade-in">
+            <div v-if="seasonHistory.length === 0" class="history-panel fade-in">
               <div class="panel-header">
                 <h2>
                   <i class="fa-solid fa-trophy"></i>
                   Championship History
                 </h2>
               </div>
-              <div v-if="seasonHistory.length === 0" class="empty-history">
+              <div class="empty-history">
                 <i class="fa-solid fa-clock-rotate-left"></i>
                 <p>No championships completed yet</p>
               </div>
-              <div v-else class="history-list">
-                <div v-for="item in seasonHistory" :key="item.id" class="history-item">
-                  <div class="history-year">{{ item.year }}</div>
-                  <div class="history-medals">
-                    <div class="medal gold">
-                      <i class="fa-solid fa-medal"></i>
-                      <span>{{ item.gold_team_name }}</span>
-                    </div>
-                    <div class="medal silver">
-                      <i class="fa-solid fa-medal"></i>
-                      <span>{{ item.silver_team_name }}</span>
-                    </div>
-                    <div class="medal bronze">
-                      <i class="fa-solid fa-medal"></i>
-                      <span>{{ item.bronze_team_name }}</span>
-                    </div>
-                  </div>
+            </div>
+
+            <template v-else>
+              <div class="history-panel fade-in">
+                <div class="panel-header">
+                  <h2>
+                    <i class="fa-solid fa-trophy"></i>
+                    Championship History
+                  </h2>
+                </div>
+                <div class="history-table-wrap">
+                  <table class="standings-table history-table">
+                    <thead>
+                      <tr>
+                        <th>Year</th>
+                        <th>Host</th>
+                        <th class="gold-col">Gold</th>
+                        <th class="silver-col">Silver</th>
+                        <th class="bronze-col">Bronze</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="item in seasonHistory" :key="item.id">
+                        <td class="history-year-cell">
+                          <span class="team-link" @click="viewOldTournament(item)">{{ item.year }}</span>
+                        </td>
+                        <td class="history-host-cell">
+                          <div class="team-cell">
+                            <img v-if="item.host_country_code" :src="getFlag(item.host_country_code)" :alt="item.host_country" class="team-flag" />
+                            <span>{{ item.host_country || '' }}</span>
+                          </div>
+                        </td>
+                        <td class="gold-col">
+                          <div class="team-cell">
+                            <img v-if="item.gold_country_code" :src="getFlag(item.gold_country_code)" :alt="item.gold_team_name" class="team-flag" />
+                            <span>{{ item.gold_team_name }}</span>
+                          </div>
+                        </td>
+                        <td class="silver-col">
+                          <div class="team-cell">
+                            <img v-if="item.silver_country_code" :src="getFlag(item.silver_country_code)" :alt="item.silver_team_name" class="team-flag" />
+                            <span>{{ item.silver_team_name }}</span>
+                          </div>
+                        </td>
+                        <td class="bronze-col">
+                          <div class="team-cell">
+                            <img v-if="item.bronze_country_code" :src="getFlag(item.bronze_country_code)" :alt="item.bronze_team_name" class="team-flag" />
+                            <span>{{ item.bronze_team_name }}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            </div>
+
+              <!-- Medal Summary Table -->
+              <div class="history-panel fade-in" style="margin-top: 1.5rem;">
+                <div class="panel-header">
+                  <h2>
+                    <i class="fa-solid fa-medal"></i>
+                    All-Time Medal Table
+                  </h2>
+                </div>
+                <div class="history-table-wrap">
+                  <table class="standings-table medal-table">
+                    <thead>
+                      <tr>
+                        <th class="pos">#</th>
+                        <th class="team">Country</th>
+                        <th class="gold-col">Gold</th>
+                        <th class="silver-col">Silver</th>
+                        <th class="bronze-col">Bronze</th>
+                        <th class="pts">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, index) in medalTable" :key="row.country">
+                        <td class="pos">{{ index + 1 }}</td>
+                        <td class="team">
+                          <div class="team-cell">
+                            <img v-if="row.countryCode" :src="getFlag(row.countryCode)" :alt="row.country" class="team-flag" />
+                            <span>{{ row.country }}</span>
+                          </div>
+                        </td>
+                        <td class="gold-col">{{ row.gold || '' }}</td>
+                        <td class="silver-col">{{ row.silver || '' }}</td>
+                        <td class="bronze-col">{{ row.bronze || '' }}</td>
+                        <td class="pts">{{ row.total }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
           </template>
         </template>
       </div>
@@ -710,6 +1313,78 @@
             <i v-if="resetting" class="fa-solid fa-spinner fa-spin"></i>
             <i v-else class="fa-solid fa-rotate-left"></i>
             {{ resetting ? 'Resetting...' : 'Reset World' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Match Detail Modal (for completed matches) -->
+    <div v-if="showMatchDetail" class="modal-overlay" @click.self="showMatchDetail = false">
+      <div class="modal simulation-modal fade-in">
+        <div class="modal-header">
+          <h2>
+            <i class="fa-solid fa-hockey-puck"></i>
+            Match Detail
+          </h2>
+          <button @click="showMatchDetail = false" class="btn btn-ghost">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="simulation-header" v-if="matchDetailData">
+          <div class="sim-team home">
+            <img :src="getFlag(matchDetailData.home_team_flag)" :alt="matchDetailData.home_team_short" class="sim-flag" />
+            <span class="sim-team-name">{{ matchDetailData.home_team_short }}</span>
+          </div>
+          <div class="sim-score-box">
+            <span class="sim-score">{{ matchDetailData.home_score }}</span>
+            <span class="sim-separator">:</span>
+            <span class="sim-score">{{ matchDetailData.away_score }}</span>
+            <div class="sim-period" v-if="matchDetailData.overtime || matchDetailData.shootout">
+              <span class="overtime">{{ matchDetailData.shootout ? 'SO' : 'OT' }}</span>
+            </div>
+            <div class="period-scores-row" v-if="matchDetailPeriodScores.length > 0">
+              <span v-for="(ps, i) in matchDetailPeriodScores" :key="i" class="period-score-item">
+                {{ ps.label }}: {{ ps.home }}-{{ ps.away }}
+              </span>
+            </div>
+          </div>
+          <div class="sim-team away">
+            <span class="sim-team-name">{{ matchDetailData.away_team_short }}</span>
+            <img :src="getFlag(matchDetailData.away_team_flag)" :alt="matchDetailData.away_team_short" class="sim-flag" />
+          </div>
+        </div>
+
+        <div class="events-list" v-if="matchDetailEvents.length > 0">
+          <div
+            v-for="(event, idx) in matchDetailEvents"
+            :key="idx"
+            class="event-item"
+            :class="event.type === 'goal' ? 'goal-event' : 'period-event'"
+          >
+            <span v-if="event.minute" class="event-minute">{{ event.minute }}'</span>
+            <i :class="event.type === 'goal' ? 'fa-solid fa-hockey-puck' : 'fa-solid fa-circle-info'"></i>
+            <span v-if="event.type === 'goal'">
+              <strong>GOAL</strong> {{ event.teamName }} -
+              <span v-if="event.scorerName" class="team-link" @click="event.scorerId && openPlayerDetail(event.scorerId)">#{{ event.scorerNumber }} {{ event.scorerName }}</span>
+              <span v-else>Goal</span>
+              <span v-if="event.scorerGoalNum" class="goal-count">({{ event.scorerGoalNum }})</span>
+              <span v-if="event.assists && event.assists.length > 0" class="assist-text">
+                (<span v-for="(a, ai) in event.assists" :key="ai"><span v-if="ai > 0">, </span><span class="team-link" @click="a.playerId && openPlayerDetail(a.playerId)">#{{ a.jerseyNumber }} {{ a.playerName }}</span></span>)
+              </span>
+            </span>
+            <span v-else>{{ event.message || event.type }}</span>
+          </div>
+        </div>
+        <div v-else class="empty-div2" style="padding: 2rem;">
+          <i class="fa-solid fa-circle-info"></i>
+          <p>No detailed events recorded for this match.</p>
+        </div>
+
+        <div class="modal-actions">
+          <button @click="showMatchDetail = false" class="btn btn-primary">
+            <i class="fa-solid fa-check"></i>
+            Close
           </button>
         </div>
       </div>
@@ -746,6 +1421,11 @@
               <span v-if="typeof currentPeriod === 'number'">Period {{ currentPeriod }}</span>
               <span v-else class="overtime">{{ currentPeriod }}</span>
             </div>
+            <div class="period-scores-row" v-if="simPeriodScores.length > 0 && (currentPeriod > 1 || simPeriodScores[0].home + simPeriodScores[0].away > 0)">
+              <span v-for="(ps, i) in simPeriodScores" :key="i" class="period-score-item" :class="{ 'period-active': typeof currentPeriod === 'number' && currentPeriod === i + 1 }">
+                {{ i < 3 ? 'P' + (i + 1) : 'OT' }}: {{ ps.home }}-{{ ps.away }}
+              </span>
+            </div>
           </div>
           <div class="sim-team away">
             <span class="sim-team-name">{{ detailedMatch.away_team_short }}</span>
@@ -781,6 +1461,86 @@
         </div>
       </div>
     </div>
+
+    <!-- Player Career Modal -->
+    <div v-if="showPlayerDetail" class="modal-overlay" @click.self="showPlayerDetail = false">
+      <div class="modal simulation-modal fade-in">
+        <div class="modal-header">
+          <h2>
+            <i class="fa-solid fa-user"></i>
+            Player Career
+          </h2>
+          <button @click="showPlayerDetail = false" class="btn btn-ghost">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div v-if="playerDetailData" class="player-career-content">
+          <div class="player-career-header">
+            <img :src="getFlag(playerDetailData.player.country_code)" class="sim-flag" />
+            <div class="player-career-info">
+              <div class="player-career-name">
+                #{{ playerDetailData.player.jersey_number }} {{ playerDetailData.player.first_name }} {{ playerDetailData.player.last_name }}
+              </div>
+              <div class="player-career-pos">
+                <span class="position-badge" :class="'pos-' + playerDetailData.player.position">
+                  {{ playerDetailData.player.position === 'F' ? 'Forward' : playerDetailData.player.position === 'D' ? 'Defenseman' : 'Goaltender' }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="player-skills-row">
+            <div class="skill-item"><span class="skill-label">SHO</span><span class="skill-value">{{ playerDetailData.player.shooting }}</span></div>
+            <div class="skill-item"><span class="skill-label">SKA</span><span class="skill-value">{{ playerDetailData.player.skating }}</span></div>
+            <div class="skill-item"><span class="skill-label">PAS</span><span class="skill-value">{{ playerDetailData.player.passing }}</span></div>
+            <div class="skill-item"><span class="skill-label">DEF</span><span class="skill-value">{{ playerDetailData.player.defense_skill }}</span></div>
+            <div class="skill-item"><span class="skill-label">PHY</span><span class="skill-value">{{ playerDetailData.player.physical }}</span></div>
+          </div>
+
+          <div v-if="playerDetailData.seasons.length > 0" class="standings-table-wrapper">
+            <table class="standings-table">
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th>GP</th>
+                  <th>G</th>
+                  <th>A</th>
+                  <th class="pts">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in playerDetailData.seasons" :key="s.seasonId">
+                  <td>{{ s.year }}</td>
+                  <td>{{ s.gamesPlayed }}</td>
+                  <td>{{ s.goals }}</td>
+                  <td>{{ s.assists }}</td>
+                  <td class="pts">{{ s.points }}</td>
+                </tr>
+                <tr class="career-totals-row">
+                  <td><strong>Career</strong></td>
+                  <td><strong>{{ playerDetailData.career.gamesPlayed }}</strong></td>
+                  <td><strong>{{ playerDetailData.career.goals }}</strong></td>
+                  <td><strong>{{ playerDetailData.career.assists }}</strong></td>
+                  <td class="pts"><strong>{{ playerDetailData.career.points }}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="empty-div2" style="padding: 1rem;">
+            <i class="fa-solid fa-circle-info"></i>
+            <p>No tournament stats recorded yet.</p>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button @click="showPlayerDetail = false" class="btn btn-primary">
+            <i class="fa-solid fa-check"></i>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -803,9 +1563,14 @@ const groupBStandings = computed(() => hockeyStore.groupBStandings)
 const div2Standings = computed(() => hockeyStore.div2Standings)
 const playoffBracket = computed(() => hockeyStore.playoffBracket)
 const seasonHistory = computed(() => hockeyStore.seasonHistory)
+const teamRoster = computed(() => hockeyStore.teamRoster)
+const tournamentStats = computed(() => hockeyStore.tournamentStats)
+const allStars = computed(() => hockeyStore.allStars)
+const viewingHistoric = computed(() => hockeyStore.viewingHistoric)
 
 const loading = ref(true)
 const activeTab = ref('tournament')
+const historicYear = ref(null)
 const showDiv2 = ref(false)
 const creatingSeason = ref(false)
 const simulating = ref(false)
@@ -814,6 +1579,7 @@ const showResetModal = ref(false)
 const resetting = ref(false)
 
 // Detailed simulation modal state
+const simGoalCounts = ref({})
 const showDetailedModal = ref(false)
 const detailedMatch = ref(null)
 const detailedEvents = ref([])
@@ -823,10 +1589,61 @@ const currentPeriod = ref(1)
 const isSimulationRunning = ref(false)
 const simulationComplete = ref(false)
 const finalResult = ref(null)
+const simPeriodScores = ref([])
 
 // Sub-tabs and round slider state
 const groupTab = ref('standings')
 const selectedRound = ref(1)
+const statsTab = ref('scorers')
+const selectedRosterTeamId = ref('')
+
+// Match detail modal state
+const showMatchDetail = ref(false)
+const matchDetailData = ref(null)
+const matchDetailEvents = ref([])
+
+// Player detail modal state
+const showPlayerDetail = ref(false)
+const playerDetailData = ref(null)
+
+// Period scores for match detail modal
+const matchDetailPeriodScores = computed(() => {
+  if (!matchDetailData.value) return []
+  // Try stored period_scores first
+  let stored = []
+  try {
+    stored = JSON.parse(matchDetailData.value.period_scores || '[]')
+  } catch (e) { stored = [] }
+  if (stored.length > 0) {
+    return stored.map((ps, i) => {
+      if (typeof ps === 'string') {
+        const [h, a] = ps.split(':').map(Number)
+        return { label: i < 3 ? 'P' + (i + 1) : 'OT', home: h || 0, away: a || 0 }
+      }
+      return { label: i < 3 ? 'P' + (i + 1) : 'OT', home: ps.home || 0, away: ps.away || 0 }
+    })
+  }
+  // Fallback: compute from events
+  const events = matchDetailData.value.events || []
+  const goals = events.filter(e => e.type === 'goal' && e.minute)
+  if (goals.length === 0) return []
+  const periods = [{ label: 'P1', home: 0, away: 0 }, { label: 'P2', home: 0, away: 0 }, { label: 'P3', home: 0, away: 0 }]
+  let hasOT = false
+  const otPeriod = { label: 'OT', home: 0, away: 0 }
+  const homeId = matchDetailData.value.home_team_id
+  for (const g of goals) {
+    const minute = parseInt(g.minute)
+    const isHome = g.teamId === homeId || g.team === 'home' ||
+      (matchDetailData.value.home_team_short && g.teamName === matchDetailData.value.home_team_short)
+    const side = isHome ? 'home' : 'away'
+    if (minute <= 20) periods[0][side]++
+    else if (minute <= 40) periods[1][side]++
+    else if (minute <= 60) periods[2][side]++
+    else { otPeriod[side]++; hasOT = true }
+  }
+  if (hasOT) periods.push(otPeriod)
+  return periods
+})
 
 const nextYear = computed(() => {
   if (seasonHistory.value.length > 0) {
@@ -839,6 +1656,11 @@ const allGroupMatchesComplete = computed(() => {
   if (!season.value?.matches) return false
   const groupMatches = season.value.matches.filter(m => m.stage === 'group')
   return groupMatches.length > 0 && groupMatches.every(m => m.status === 'completed')
+})
+
+const rankedTeams = computed(() => {
+  if (!world.value?.teams) return []
+  return [...world.value.teams].sort((a, b) => (a.world_ranking || 99) - (b.world_ranking || 99))
 })
 
 const playoffMatches = computed(() => {
@@ -897,6 +1719,160 @@ const currentRoundGroupBMatches = computed(() => {
   return groupBMatchesByRound.value[selectedRound.value] || []
 })
 
+// Find the first round with unplayed matches (the "active" matchday)
+const activeRound = computed(() => {
+  for (let r = 1; r <= totalRounds.value; r++) {
+    const aMatches = groupAMatchesByRound.value[r] || []
+    const bMatches = groupBMatchesByRound.value[r] || []
+    const allMatches = [...aMatches, ...bMatches]
+    if (allMatches.some(m => m.status !== 'completed')) {
+      return r
+    }
+  }
+  return totalRounds.value
+})
+
+// Check if a given round is fully completed
+function isRoundCompleted(round) {
+  const aMatches = groupAMatchesByRound.value[round] || []
+  const bMatches = groupBMatchesByRound.value[round] || []
+  const allMatches = [...aMatches, ...bMatches]
+  return allMatches.length > 0 && allMatches.every(m => m.status === 'completed')
+}
+
+// Group stage progress percentage
+const groupProgress = computed(() => {
+  if (!season.value?.matches) return 0
+  const groupMatches = season.value.matches.filter(m => m.stage === 'group')
+  if (groupMatches.length === 0) return 0
+  const completed = groupMatches.filter(m => m.status === 'completed').length
+  return Math.round((completed / groupMatches.length) * 100)
+})
+
+
+// All teams (for roster dropdown)
+const allTeams = computed(() => {
+  if (!world.value?.teams) return []
+  return [...world.value.teams].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+})
+
+// Medal table computed from seasonHistory
+const medalTable = computed(() => {
+  const map = {}
+  for (const h of seasonHistory.value) {
+    // Gold
+    const goldKey = h.gold_team_name
+    if (goldKey) {
+      if (!map[goldKey]) map[goldKey] = { country: goldKey, countryCode: h.gold_country_code, gold: 0, silver: 0, bronze: 0, total: 0 }
+      map[goldKey].gold++
+      map[goldKey].total++
+      if (h.gold_country_code) map[goldKey].countryCode = h.gold_country_code
+    }
+    // Silver
+    const silverKey = h.silver_team_name
+    if (silverKey) {
+      if (!map[silverKey]) map[silverKey] = { country: silverKey, countryCode: h.silver_country_code, gold: 0, silver: 0, bronze: 0, total: 0 }
+      map[silverKey].silver++
+      map[silverKey].total++
+      if (h.silver_country_code) map[silverKey].countryCode = h.silver_country_code
+    }
+    // Bronze
+    const bronzeKey = h.bronze_team_name
+    if (bronzeKey) {
+      if (!map[bronzeKey]) map[bronzeKey] = { country: bronzeKey, countryCode: h.bronze_country_code, gold: 0, silver: 0, bronze: 0, total: 0 }
+      map[bronzeKey].bronze++
+      map[bronzeKey].total++
+      if (h.bronze_country_code) map[bronzeKey].countryCode = h.bronze_country_code
+    }
+  }
+  return Object.values(map).sort((a, b) => {
+    if (b.gold !== a.gold) return b.gold - a.gold
+    if (b.silver !== a.silver) return b.silver - a.silver
+    return b.bronze - a.bronze
+  })
+})
+
+// Roster position filters
+const rosterGoalies = computed(() => {
+  if (!teamRoster.value?.players) return []
+  return teamRoster.value.players.filter(p => p.position === 'G')
+})
+
+const rosterDefensemen = computed(() => {
+  if (!teamRoster.value?.players) return []
+  return teamRoster.value.players.filter(p => p.position === 'D')
+})
+
+const rosterForwards = computed(() => {
+  if (!teamRoster.value?.players) return []
+  return teamRoster.value.players.filter(p => p.position === 'F')
+})
+
+async function openMatchDetail(matchId) {
+  try {
+    const match = await hockeyStore.fetchMatchDetails(matchId)
+    matchDetailData.value = match
+    // Load tournament stats so we can show overall goal counts
+    await loadStats()
+    const events = match.events || []
+    matchDetailEvents.value = events.filter(e => e.type === 'goal').map(e => {
+      const totalGoals = e.scorerId ? (playerStatsMap.value[e.scorerId]?.goals || null) : null
+      return { ...e, scorerGoalNum: totalGoals }
+    })
+    showMatchDetail.value = true
+  } catch (err) {
+    console.error('Failed to load match details:', err)
+  }
+}
+
+function openTeamRoster(teamId) {
+  if (!teamId) return
+  activeTab.value = 'tournament'
+  groupTab.value = 'rosters'
+  selectedRosterTeamId.value = teamId
+  loadTeamRoster()
+}
+
+async function loadStats() {
+  if (season.value) {
+    try {
+      await hockeyStore.fetchTournamentStats(season.value.id)
+    } catch (err) {
+      console.error('Failed to load stats:', err)
+    }
+  }
+}
+
+async function loadTeamRoster() {
+  if (selectedRosterTeamId.value) {
+    try {
+      await hockeyStore.fetchTeamRoster(selectedRosterTeamId.value)
+      // Also load stats so we can show per-player stats on roster
+      if (season.value) {
+        await hockeyStore.fetchTournamentStats(season.value.id)
+      }
+    } catch (err) {
+      console.error('Failed to load roster:', err)
+    }
+  }
+}
+
+// Map player ID to tournament stats
+const playerStatsMap = computed(() => {
+  const map = {}
+  for (const stat of tournamentStats.value) {
+    if (stat.playerId) {
+      map[stat.playerId] = stat
+    }
+  }
+  return map
+})
+
+function playerStat(playerId, field) {
+  const s = playerStatsMap.value[playerId]
+  return s ? (s[field] || 0) : 0
+}
+
 function getFlag(flagOrCode) {
   if (!flagOrCode) return '/flags/UNK.png'
   if (flagOrCode.endsWith('.png')) return `/flags/${flagOrCode}`
@@ -933,6 +1909,7 @@ async function handleCreateSeason() {
 
     console.log('Creating season for year:', yearToUse)
     await hockeyStore.createSeason(worldId.value, yearToUse)
+    await hockeyStore.fetchWorld(worldId.value)
     await hockeyStore.fetchSeason(worldId.value)
   } catch (err) {
     console.error('Failed to create season:', err)
@@ -960,9 +1937,27 @@ async function simulateSingleMatch(matchId, detailed) {
     const match = season.value.matches.find(m => m.id === matchId)
     if (!match) return
 
+    // Load rosters and current stats in parallel
+    let homeRoster = [], awayRoster = []
+    try {
+      const rosterPromise = Promise.all([
+        hockeyStore.fetchTeamRoster(match.home_team_id),
+        hockeyStore.fetchTeamRoster(match.away_team_id)
+      ])
+      const statsPromise = season.value ? hockeyStore.fetchTournamentStats(season.value.id) : Promise.resolve()
+      const [rosterResults] = await Promise.all([rosterPromise, statsPromise])
+      homeRoster = (rosterResults[0]?.players || []).filter(p => p.position !== 'G')
+      awayRoster = (rosterResults[1]?.players || []).filter(p => p.position !== 'G')
+    } catch (err) {
+      console.error('Failed to load rosters for simulation:', err)
+    }
+
     // Setup detailed simulation
     detailedMatch.value = match
     detailedEvents.value = []
+    // Seed goal counts from tournament stats so live sim shows tournament totals
+    simGoalCounts.value = seedGoalCountsFromStats()
+    simPeriodScores.value = [{ home: 0, away: 0 }, { home: 0, away: 0 }, { home: 0, away: 0 }]
     currentHomeScore.value = 0
     currentAwayScore.value = 0
     currentPeriod.value = 1
@@ -971,8 +1966,8 @@ async function simulateSingleMatch(matchId, detailed) {
     showDetailedModal.value = true
     isSimulationRunning.value = true
 
-    // Run animated simulation
-    await runDetailedSimulation(matchId)
+    // Run animated simulation with rosters
+    await runDetailedSimulation(matchId, false, homeRoster, awayRoster)
   } else {
     // Fast simulation
     simulating.value = true
@@ -987,7 +1982,7 @@ async function simulateSingleMatch(matchId, detailed) {
   }
 }
 
-async function runDetailedSimulation(matchId, isPlayoff = false) {
+async function runDetailedSimulation(matchId, isPlayoff = false, homeRoster = [], awayRoster = []) {
   const homeTeam = detailedMatch.value.home_team_short
   const awayTeam = detailedMatch.value.away_team_short
 
@@ -1005,8 +2000,8 @@ async function runDetailedSimulation(matchId, isPlayoff = false) {
     })
     await delay(800)
 
-    // Generate random events for this period (2-5 events)
-    const eventCount = 2 + Math.floor(Math.random() * 4)
+    // Generate random events for this period (4-8 events)
+    const eventCount = 4 + Math.floor(Math.random() * 5)
     const periodStartMinute = (period - 1) * 20
     const usedMinutes = new Set()
     const periodEvents = []
@@ -1020,7 +2015,7 @@ async function runDetailedSimulation(matchId, isPlayoff = false) {
       } while (usedMinutes.has(minute))
       usedMinutes.add(minute)
 
-      const event = generateRandomEvent(homeTeam, awayTeam, minute)
+      const event = generateRandomEvent(homeTeam, awayTeam, minute, homeRoster, awayRoster)
       periodEvents.push(event)
     }
 
@@ -1038,8 +2033,10 @@ async function runDetailedSimulation(matchId, isPlayoff = false) {
       if (event.type === 'goal') {
         if (event.team === 'home') {
           currentHomeScore.value++
+          simPeriodScores.value[period - 1].home++
         } else {
           currentAwayScore.value++
+          simPeriodScores.value[period - 1].away++
         }
       }
       addEvent(event)
@@ -1072,20 +2069,34 @@ async function runDetailedSimulation(matchId, isPlayoff = false) {
     // Generate overtime winner
     const otWinner = Math.random() < 0.5 ? 'home' : 'away'
     const scoringTeam = otWinner === 'home' ? homeTeam : awayTeam
+    const otRoster = otWinner === 'home' ? homeRoster : awayRoster
+    simPeriodScores.value.push({ home: 0, away: 0 })
     if (otWinner === 'home') {
       currentHomeScore.value++
+      simPeriodScores.value[3].home++
     } else {
       currentAwayScore.value++
+      simPeriodScores.value[3].away++
     }
 
     const otMinute = 60 + 1 + Math.floor(Math.random() * 4)
+    const otScorer = pickWeightedPlayer(otRoster, 'shooting')
+    const otAssists = pickAssists(otRoster, otScorer)
+    const otScorerText = otScorer ? `#${otScorer.jersey_number} ${otScorer.first_name} ${otScorer.last_name}` : ''
+    const otAssistNames = otAssists.map(a => `${a.first_name} ${a.last_name}`).join(', ')
+    const otAssistText = otAssistNames ? `, ast. ${otAssistNames}` : ''
     addEvent({
       type: 'goal',
       team: otWinner,
       minute: `${otMinute}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`,
-      message: `GOAL! ${scoringTeam} scores the overtime winner!`,
+      message: `GOAL! ${scoringTeam}${otScorerText ? ' - ' + otScorerText : ' scores the overtime winner!'}${otAssistText}`,
       icon: 'fa-solid fa-hockey-puck',
-      className: 'goal-event'
+      className: 'goal-event',
+      teamName: scoringTeam,
+      scorerId: otScorer?.id || null,
+      scorerName: otScorer ? `${otScorer.first_name} ${otScorer.last_name}` : null,
+      scorerNumber: otScorer?.jersey_number,
+      assists: otAssists.map(a => ({ playerId: a.id, playerName: `${a.first_name} ${a.last_name}`, jerseyNumber: a.jersey_number }))
     })
     await delay(800)
   }
@@ -1094,7 +2105,8 @@ async function runDetailedSimulation(matchId, isPlayoff = false) {
   finalResult.value = {
     homeScore: currentHomeScore.value,
     awayScore: currentAwayScore.value,
-    overtime: currentPeriod.value === 'OT'
+    overtime: currentPeriod.value === 'OT',
+    periodScores: simPeriodScores.value.map(p => `${p.home}:${p.away}`)
   }
 
   addEvent({
@@ -1109,26 +2121,61 @@ async function runDetailedSimulation(matchId, isPlayoff = false) {
   simulationComplete.value = true
 }
 
-function generateRandomEvent(homeTeam, awayTeam, minute) {
+function pickWeightedPlayer(roster, skill) {
+  if (!roster || roster.length === 0) return null
+  const weights = roster.map(p => Math.max(1, p[skill] || 50))
+  const total = weights.reduce((a, b) => a + b, 0)
+  let rand = Math.random() * total
+  for (let i = 0; i < roster.length; i++) {
+    rand -= weights[i]
+    if (rand <= 0) return roster[i]
+  }
+  return roster[roster.length - 1]
+}
+
+function pickAssists(roster, scorer) {
+  if (!roster || roster.length < 2) return []
+  const available = roster.filter(p => p.id !== scorer?.id)
+  if (available.length === 0) return []
+  const roll = Math.random()
+  if (roll < 0.15) return [] // unassisted
+  const a1 = pickWeightedPlayer(available, 'passing')
+  if (roll < 0.55 || available.length < 2) return a1 ? [a1] : [] // one assist
+  const remaining = available.filter(p => p.id !== a1?.id)
+  const a2 = pickWeightedPlayer(remaining, 'passing')
+  return [a1, a2].filter(Boolean) // two assists
+}
+
+function generateRandomEvent(homeTeam, awayTeam, minute, homeRoster, awayRoster) {
   const rand = Math.random()
   const isHome = Math.random() < 0.5
   const team = isHome ? homeTeam : awayTeam
   const teamSide = isHome ? 'home' : 'away'
+  const roster = isHome ? homeRoster : awayRoster
   const seconds = String(Math.floor(Math.random() * 60)).padStart(2, '0')
   const timeStr = `${minute}:${seconds}`
 
-  if (rand < 0.25) {
-    // Goal
+  if (rand < 0.33) {
+    // Goal with scorer and assists
+    const scorer = pickWeightedPlayer(roster, 'shooting')
+    const assists = pickAssists(roster, scorer)
+    const scorerText = scorer ? `#${scorer.jersey_number} ${scorer.first_name} ${scorer.last_name}` : ''
+    const assistNames = assists.map(a => `${a.first_name} ${a.last_name}`).join(', ')
+    const assistText = assistNames ? `, ast. ${assistNames}` : ''
     return {
       type: 'goal',
       team: teamSide,
       minute: timeStr,
-      message: `GOAL! ${team} scores!`,
+      message: `GOAL! ${team}${scorerText ? ' - ' + scorerText : ' scores!'}${assistText}`,
       icon: 'fa-solid fa-hockey-puck',
-      className: 'goal-event'
+      className: 'goal-event',
+      teamName: team,
+      scorerId: scorer?.id || null,
+      scorerName: scorer ? `${scorer.first_name} ${scorer.last_name}` : null,
+      scorerNumber: scorer?.jersey_number,
+      assists: assists.map(a => ({ playerId: a.id, playerName: `${a.first_name} ${a.last_name}`, jerseyNumber: a.jersey_number }))
     }
-  } else if (rand < 0.45) {
-    // Save
+  } else if (rand < 0.50) {
     return {
       type: 'save',
       minute: timeStr,
@@ -1136,26 +2183,27 @@ function generateRandomEvent(homeTeam, awayTeam, minute) {
       icon: 'fa-solid fa-shield',
       className: 'save-event'
     }
-  } else if (rand < 0.60) {
-    // Shot
+  } else if (rand < 0.65) {
+    const shooter = pickWeightedPlayer(roster, 'shooting')
+    const shooterText = shooter ? `#${shooter.jersey_number} ${shooter.first_name} ${shooter.last_name}` : team
     return {
       type: 'shot',
       minute: timeStr,
-      message: `${team} with a shot on goal`,
+      message: `${shooterText} with a shot on goal`,
       icon: 'fa-solid fa-crosshairs',
       className: 'shot-event'
     }
-  } else if (rand < 0.75) {
-    // Penalty
+  } else if (rand < 0.78) {
+    const penalized = pickWeightedPlayer(roster, 'physical')
+    const penaltyText = penalized ? `#${penalized.jersey_number} ${penalized.first_name} ${penalized.last_name} (${team})` : team
     return {
       type: 'penalty',
       minute: timeStr,
-      message: `Penalty called on ${team}`,
+      message: `Penalty called on ${penaltyText}`,
       icon: 'fa-solid fa-gavel',
       className: 'penalty-event'
     }
-  } else if (rand < 0.85) {
-    // Power play
+  } else if (rand < 0.88) {
     return {
       type: 'powerplay',
       minute: timeStr,
@@ -1164,22 +2212,42 @@ function generateRandomEvent(homeTeam, awayTeam, minute) {
       className: 'powerplay-event'
     }
   } else {
-    // Hit
+    const hitter = pickWeightedPlayer(roster, 'physical')
+    const hitterText = hitter ? `#${hitter.jersey_number} ${hitter.last_name}` : team
     return {
       type: 'hit',
       minute: timeStr,
-      message: `Big hit by ${team}!`,
+      message: `Big hit by ${hitterText}!`,
       icon: 'fa-solid fa-burst',
       className: 'hit-event'
     }
   }
 }
 
+// Build initial goal counts from current tournament stats so live sim shows tournament totals
+function seedGoalCountsFromStats() {
+  const counts = {}
+  for (const stat of tournamentStats.value) {
+    if (stat.goals > 0 && stat.jerseyNumber && stat.playerName) {
+      const key = stat.jerseyNumber + ':' + stat.playerName
+      counts[key] = stat.goals
+    }
+  }
+  return counts
+}
+
 function addEvent(event) {
-  detailedEvents.value.push({
-    ...event,
-    id: Date.now() + Math.random()
-  })
+  let enriched = { ...event, id: Date.now() + Math.random() }
+  // Track running goal count per scorer
+  if (event.type === 'goal' && event.scorerName) {
+    const key = event.scorerNumber + ':' + event.scorerName
+    simGoalCounts.value[key] = (simGoalCounts.value[key] || 0) + 1
+    const count = simGoalCounts.value[key]
+    // Insert goal count after scorer name in message
+    const scorerFull = `#${event.scorerNumber} ${event.scorerName}`
+    enriched.message = event.message.replace(scorerFull, `${scorerFull} [${count}]`)
+  }
+  detailedEvents.value.push(enriched)
   // Auto-scroll to bottom
   setTimeout(() => {
     const container = document.querySelector('.events-list')
@@ -1204,11 +2272,13 @@ async function closeDetailedModal() {
         awayScore: finalResult.value.awayScore,
         overtime: finalResult.value.overtime || false,
         shootout: finalResult.value.shootout || false,
-        events: detailedEvents.value
+        events: detailedEvents.value,
+        periodScores: finalResult.value.periodScores || []
       })
       // Check playoff advancement if this is a playoff match
       if (isPlayoffMatch && season.value) {
         await hockeyStore.checkPlayoffAdvance(season.value.id)
+        await hockeyStore.fetchWorld(worldId.value)
       }
       await hockeyStore.fetchSeason(worldId.value)
     } catch (err) {
@@ -1231,6 +2301,7 @@ async function handleStartPlayoffs() {
   try {
     await hockeyStore.startPlayoffs(season.value.id)
     await hockeyStore.fetchSeason(worldId.value)
+    groupTab.value = 'bracket'
   } catch (err) {
     console.error('Failed to start playoffs:', err)
   } finally {
@@ -1244,9 +2315,27 @@ async function simulatePlayoffMatch(matchId, detailed = false) {
     const match = season.value.matches.find(m => m.id === matchId)
     if (!match) return
 
+    // Load rosters and current stats in parallel
+    let homeRoster = [], awayRoster = []
+    try {
+      const rosterPromise = Promise.all([
+        hockeyStore.fetchTeamRoster(match.home_team_id),
+        hockeyStore.fetchTeamRoster(match.away_team_id)
+      ])
+      const statsPromise = season.value ? hockeyStore.fetchTournamentStats(season.value.id) : Promise.resolve()
+      const [rosterResults] = await Promise.all([rosterPromise, statsPromise])
+      homeRoster = (rosterResults[0]?.players || []).filter(p => p.position !== 'G')
+      awayRoster = (rosterResults[1]?.players || []).filter(p => p.position !== 'G')
+    } catch (err) {
+      console.error('Failed to load rosters for simulation:', err)
+    }
+
     // Setup detailed simulation
     detailedMatch.value = match
     detailedEvents.value = []
+    // Seed goal counts from tournament stats so live sim shows tournament totals
+    simGoalCounts.value = seedGoalCountsFromStats()
+    simPeriodScores.value = [{ home: 0, away: 0 }, { home: 0, away: 0 }, { home: 0, away: 0 }]
     currentHomeScore.value = 0
     currentAwayScore.value = 0
     currentPeriod.value = 1
@@ -1256,13 +2345,14 @@ async function simulatePlayoffMatch(matchId, detailed = false) {
     isSimulationRunning.value = true
 
     // Run animated simulation (playoff = true for OT rules)
-    await runDetailedSimulation(matchId, true)
+    await runDetailedSimulation(matchId, true, homeRoster, awayRoster)
   } else {
     // Fast simulation
     simulating.value = true
     try {
       await hockeyStore.simulateMatch(matchId, false)
       await hockeyStore.checkPlayoffAdvance(season.value.id)
+      await hockeyStore.fetchWorld(worldId.value)
       await hockeyStore.fetchSeason(worldId.value)
     } catch (err) {
       console.error('Failed to simulate match:', err)
@@ -1280,6 +2370,49 @@ async function loadHistory() {
   }
 }
 
+async function viewOldTournament(item) {
+  if (!item.season_id) return
+  try {
+    await hockeyStore.fetchSeasonById(item.season_id)
+    hockeyStore.viewingHistoric = true
+    historicYear.value = item.year
+    activeTab.value = 'tournament'
+    // Default to bracket tab if playoffs, otherwise standings
+    if (hockeyStore.currentSeason?.phase === 'playoff') {
+      groupTab.value = 'bracket'
+    } else {
+      groupTab.value = 'standings'
+    }
+  } catch (err) {
+    console.error('Failed to load old tournament:', err)
+  }
+}
+
+async function backToCurrent() {
+  try {
+    await hockeyStore.fetchSeason(worldId.value)
+    hockeyStore.viewingHistoric = false
+    historicYear.value = null
+    if (hockeyStore.currentSeason?.phase === 'playoff') {
+      groupTab.value = 'bracket'
+    } else {
+      groupTab.value = 'standings'
+    }
+  } catch (err) {
+    console.error('Failed to load current season:', err)
+  }
+}
+
+async function openPlayerDetail(playerId) {
+  try {
+    const data = await hockeyStore.fetchPlayerCareer(playerId)
+    playerDetailData.value = data
+    showPlayerDetail.value = true
+  } catch (err) {
+    console.error('Failed to load player career:', err)
+  }
+}
+
 function confirmReset() {
   showResetModal.value = true
 }
@@ -1289,6 +2422,8 @@ async function handleReset() {
   try {
     await hockeyStore.resetWorld(worldId.value)
     await hockeyStore.fetchWorld(worldId.value)
+    hockeyStore.viewingHistoric = false
+    historicYear.value = null
   } catch (err) {
     console.error('Failed to reset world:', err)
   } finally {
@@ -1297,10 +2432,25 @@ async function handleReset() {
   }
 }
 
+// Auto-select the active (first unplayed) round when season loads
+watch(activeRound, (newRound) => {
+  if (newRound && selectedRound.value === 1) {
+    selectedRound.value = newRound
+  }
+})
+
 onMounted(async () => {
   try {
     await hockeyStore.fetchWorld(worldId.value)
     await hockeyStore.fetchSeason(worldId.value)
+    // Set selected round to the active round after data loads
+    if (activeRound.value) {
+      selectedRound.value = activeRound.value
+    }
+    // Default to bracket tab during playoffs
+    if (season.value?.phase === 'playoff') {
+      groupTab.value = 'bracket'
+    }
   } catch (error) {
     console.error('Failed to load world:', error)
   } finally {
@@ -1428,16 +2578,32 @@ onMounted(async () => {
 
 .phase-banner {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
+  gap: 0.25rem;
   padding: 1rem;
   background: linear-gradient(135deg, #38bdf8, #0ea5e9);
   color: white;
   border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.phase-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   font-size: 1.25rem;
   font-weight: 600;
-  margin-bottom: 1.5rem;
+}
+
+.phase-host {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 400;
+  opacity: 0.9;
 }
 
 .phase-banner.playoff {
@@ -1495,8 +2661,8 @@ onMounted(async () => {
   to { opacity: 1; }
 }
 
-/* Round Slider */
-.round-slider-container {
+/* Round Selector */
+.round-selector-container {
   background: white;
   border-radius: 0.75rem;
   padding: 1rem 1.5rem;
@@ -1513,70 +2679,89 @@ onMounted(async () => {
   font-size: 1rem;
 }
 
-.round-slider-wrapper {
+.round-buttons {
   display: flex;
-  align-items: center;
-  gap: 1rem;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
 }
 
-.round-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 8px;
-  background: var(--gray-200);
-  border-radius: 4px;
-  outline: none;
-}
-
-.round-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 24px;
-  height: 24px;
-  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
-  transition: transform 0.2s;
-}
-
-.round-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-}
-
-.round-slider::-moz-range-thumb {
-  width: 24px;
-  height: 24px;
-  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.4);
-}
-
-.round-btn {
-  width: 36px;
-  height: 36px;
+.round-dot {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  background: var(--gray-100);
-  color: var(--gray-600);
+  border: 2px solid var(--gray-200);
+  background: white;
+  color: var(--gray-500);
   border-radius: 50%;
   cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
   transition: all 0.2s;
+  position: relative;
 }
 
-.round-btn:hover:not(:disabled) {
-  background: #0ea5e9;
+.round-dot:hover {
+  border-color: #0ea5e9;
+  color: #0ea5e9;
+}
+
+.round-dot.completed {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.round-dot.completed .round-number {
+  display: none;
+}
+
+.round-dot.completed .round-check {
+  font-size: 0.75rem;
+}
+
+.round-dot.current:not(.active) {
+  border-color: #0ea5e9;
+  color: #0ea5e9;
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(14, 165, 233, 0); }
+}
+
+.round-dot.active {
+  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  border-color: #0ea5e9;
   color: white;
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.4);
 }
 
-.round-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.round-dot.active .round-check {
+  display: none;
+}
+
+.round-dot.active .round-number {
+  display: inline;
+}
+
+.round-progress-bar {
+  height: 4px;
+  background: var(--gray-200);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.round-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  border-radius: 2px;
+  transition: width 0.5s ease;
 }
 
 /* Empty Division II */
@@ -1929,6 +3114,24 @@ onMounted(async () => {
   color: #22c55e;
 }
 
+.division-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.division-badge.div-top {
+  background: #eff6ff;
+  color: #3b82f6;
+}
+
+.division-badge.div-2 {
+  background: #fefce8;
+  color: #ca8a04;
+}
+
 .championship-complete {
   text-align: center;
   padding: 2rem;
@@ -2003,50 +3206,41 @@ onMounted(async () => {
   margin-bottom: 1rem;
 }
 
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.history-table-wrap {
+  overflow-x: auto;
 }
 
-.history-item {
-  display: flex;
-  align-items: center;
-  gap: 2rem;
-  padding: 1rem;
-  background: var(--gray-50);
-  border-radius: 0.75rem;
+.history-table {
+  margin-top: 0;
 }
 
-.history-year {
-  font-size: 1.5rem;
+.history-year-cell {
   font-weight: 700;
-  color: var(--gray-800);
-  min-width: 80px;
+  font-size: 1rem;
 }
 
-.history-medals {
-  display: flex;
-  gap: 1.5rem;
+.history-host-cell {
+  color: var(--gray-500);
+  font-size: 0.85rem;
 }
 
-.medal {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
+.host-country {
+  opacity: 0.8;
 }
 
-.medal.gold i {
-  color: #fbbf24;
+.gold-col {
+  color: #b8860b;
+  font-weight: 600;
 }
 
-.medal.silver i {
-  color: #94a3b8;
+.silver-col {
+  color: #6b7280;
+  font-weight: 600;
 }
 
-.medal.bronze i {
+.bronze-col {
   color: #cd7f32;
+  font-weight: 600;
 }
 
 /* Modal */
@@ -2192,6 +3386,41 @@ onMounted(async () => {
 .match-card.completed {
   background: #f0fdf4;
   border: 1px solid #86efac;
+}
+
+.match-card.clickable,
+.bracket-match.clickable {
+  cursor: pointer;
+}
+
+.match-card.clickable:hover,
+.bracket-match.clickable:hover {
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
+  border-color: #7dd3fc;
+}
+
+.team-link {
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.team-link:hover {
+  color: #0ea5e9;
+}
+
+.team-link:hover span {
+  text-decoration: underline;
+}
+
+.assist-text {
+  color: var(--gray-500);
+  font-size: 0.85em;
+}
+
+.goal-count {
+  font-weight: 700;
+  color: #0ea5e9;
+  font-size: 0.85em;
 }
 
 .match-card .team {
@@ -2459,5 +3688,273 @@ onMounted(async () => {
   .matches-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Stats Tab */
+.stats-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.jersey-num {
+  font-family: monospace;
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  min-width: 30px;
+}
+
+.roster-selector {
+  margin-bottom: 1.5rem;
+}
+
+.roster-dropdown {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--gray-200);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  background: white;
+  color: var(--gray-800);
+  cursor: pointer;
+  appearance: auto;
+}
+
+.roster-dropdown:focus {
+  outline: none;
+  border-color: #0ea5e9;
+}
+
+.roster-section {
+  margin-bottom: 1.5rem;
+}
+
+.roster-position-header {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0ea5e9;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 2px solid #0ea5e9;
+}
+
+.roster-table .jersey {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--gray-500);
+  width: 40px;
+}
+
+.allstars-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.allstar-card {
+  background: var(--gray-50);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  text-align: center;
+  border: 2px solid var(--gray-200);
+}
+
+.allstar-card.gold-card {
+  background: #fffbeb;
+  border-color: #fbbf24;
+}
+
+.allstar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #0ea5e9;
+  margin-bottom: 0.5rem;
+}
+
+.gold-card .allstar-label {
+  color: #d97706;
+}
+
+.allstar-name {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 0.375rem;
+}
+
+.allstar-team {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  margin-bottom: 0.25rem;
+}
+
+.allstar-stats {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+@media (max-width: 640px) {
+  .allstars-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Historic viewing banner */
+.historic-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border-radius: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.historic-back-btn {
+  margin-left: 1rem;
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.historic-back-btn:hover {
+  background: rgba(255, 255, 255, 0.35) !important;
+}
+
+/* Host flag in phase banner */
+.host-flag {
+  width: 20px;
+  height: 14px;
+  object-fit: cover;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+/* Medal table */
+.medal-table .gold-col {
+  font-weight: 600;
+}
+
+/* Player career modal */
+.player-career-content {
+  padding: 0 1.5rem;
+}
+
+.player-career-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--gray-200);
+  margin-bottom: 1rem;
+}
+
+.player-career-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.player-career-pos {
+  margin-top: 0.25rem;
+}
+
+.position-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pos-F {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.pos-D {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.pos-G {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.player-skills-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.skill-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  min-width: 50px;
+}
+
+.skill-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-500);
+}
+
+.skill-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.career-totals-row {
+  background: var(--gray-50);
+  border-top: 2px solid var(--gray-300);
+}
+
+/* Period scores row */
+.period-scores-row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.period-score-item {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.125rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+.period-score-item.period-active {
+  color: white;
+  background: rgba(255, 255, 255, 0.25);
+  font-weight: 700;
 }
 </style>

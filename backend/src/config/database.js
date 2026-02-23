@@ -995,6 +995,71 @@ async function initializeDatabase() {
     // Column already exists, ignore
   }
 
+  // Migration: Add host columns to hockey_seasons
+  try { db.run('ALTER TABLE hockey_seasons ADD COLUMN host_country TEXT'); } catch (e) {}
+  try { db.run('ALTER TABLE hockey_seasons ADD COLUMN host_cities TEXT'); } catch (e) {}
+  try { db.run('ALTER TABLE hockey_seasons ADD COLUMN host_country_code TEXT'); } catch (e) {}
+
+  // Migration: Add world_ranking column to hockey_teams
+  try { db.run('ALTER TABLE hockey_teams ADD COLUMN world_ranking INTEGER DEFAULT 99'); } catch (e) {}
+
+  // Backfill world_ranking for existing worlds where all teams are still at default 99
+  try {
+    const stmt = db.prepare('SELECT DISTINCT world_id FROM hockey_teams WHERE world_ranking = 99');
+    const worldIds = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      const wid = row.world_id instanceof Uint8Array ? Buffer.from(row.world_id).toString('utf8') : row.world_id;
+      worldIds.push(wid);
+    }
+    stmt.free();
+    for (const wid of worldIds) {
+      const tStmt = db.prepare('SELECT id FROM hockey_teams WHERE world_id = ? ORDER BY power DESC');
+      tStmt.bind([wid]);
+      let rank = 1;
+      while (tStmt.step()) {
+        const tRow = tStmt.getAsObject();
+        const tid = tRow.id instanceof Uint8Array ? Buffer.from(tRow.id).toString('utf8') : tRow.id;
+        db.run('UPDATE hockey_teams SET world_ranking = ? WHERE id = ?', [rank, tid]);
+        rank++;
+      }
+      tStmt.free();
+    }
+  } catch (e) {
+    console.error('Error backfilling world_ranking:', e);
+  }
+
+  // Migration: Add host columns to hockey_season_history
+  try { db.run('ALTER TABLE hockey_season_history ADD COLUMN host_country TEXT'); } catch (e) {}
+  try { db.run('ALTER TABLE hockey_season_history ADD COLUMN host_cities TEXT'); } catch (e) {}
+  try { db.run('ALTER TABLE hockey_season_history ADD COLUMN host_country_code TEXT'); } catch (e) {}
+  try { db.run('ALTER TABLE hockey_season_history ADD COLUMN season_id TEXT'); } catch (e) {}
+
+  // Hockey players table (individual players per national team)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hockey_players (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      country_code TEXT NOT NULL,
+      position TEXT NOT NULL,
+      jersey_number INTEGER NOT NULL,
+      shooting INTEGER DEFAULT 70,
+      skating INTEGER DEFAULT 70,
+      passing INTEGER DEFAULT 70,
+      defense_skill INTEGER DEFAULT 70,
+      physical INTEGER DEFAULT 70,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES hockey_worlds(id) ON DELETE CASCADE,
+      FOREIGN KEY (team_id) REFERENCES hockey_teams(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Migration: Add all_stars column to hockey_seasons
+  try { db.run('ALTER TABLE hockey_seasons ADD COLUMN all_stars TEXT'); } catch (e) {}
+
   // Hockey season history table
   db.run(`
     CREATE TABLE IF NOT EXISTS hockey_season_history (
@@ -1366,6 +1431,19 @@ function run(sql, params = []) {
   }
 }
 
+// sql.js getAsObject() returns Uint8Array for TEXT columns - decode them to strings
+function decodeRow(row) {
+  const decoded = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value instanceof Uint8Array) {
+      decoded[key] = Buffer.from(value).toString('utf8');
+    } else {
+      decoded[key] = value;
+    }
+  }
+  return decoded;
+}
+
 function get(sql, params = []) {
   if (!db) {
     throw new Error('Database not initialized');
@@ -1374,7 +1452,7 @@ function get(sql, params = []) {
     const stmt = db.prepare(sql);
     stmt.bind(params);
     if (stmt.step()) {
-      const row = stmt.getAsObject();
+      const row = decodeRow(stmt.getAsObject());
       stmt.free();
       return row;
     }
@@ -1397,7 +1475,7 @@ function all(sql, params = []) {
     stmt.bind(params);
     const results = [];
     while (stmt.step()) {
-      results.push(stmt.getAsObject());
+      results.push(decodeRow(stmt.getAsObject()));
     }
     stmt.free();
     return results;

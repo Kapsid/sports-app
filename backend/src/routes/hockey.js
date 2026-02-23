@@ -11,10 +11,27 @@ const {
   calculateStandings,
   assignTeamsToGroups,
   simulateDiv2Season,
-  simulateDiv3Season
+  simulateDiv3Season,
+  generateHost
 } = require('../data/hockeyTeams');
+const { generateRoster } = require('../data/hockeyNames');
 
 const router = express.Router();
+
+// Helper: generate players for all teams in a world
+function generatePlayersForWorld(worldId) {
+  const teams = all('SELECT * FROM hockey_teams WHERE world_id = ?', [worldId]);
+  for (const team of teams) {
+    const roster = generateRoster(team.country_code, team.power);
+    for (const player of roster) {
+      const playerId = uuidv4();
+      run(`
+        INSERT INTO hockey_players (id, world_id, team_id, first_name, last_name, country_code, position, jersey_number, shooting, skating, passing, defense_skill, physical)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [playerId, worldId, team.id, player.firstName, player.lastName, player.countryCode, player.position, player.jerseyNumber, player.shooting, player.skating, player.passing, player.defenseSkill, player.physical]);
+    }
+  }
+}
 
 // ==================== WORLDS ====================
 
@@ -105,6 +122,15 @@ router.post('/worlds', authMiddleware, (req, res) => {
       `, [teamId, worldId, team.name, team.shortName, team.countryCode, team.flag, team.power, team.offense, team.defense, team.goaltending]);
     }
 
+    // Initialize world rankings based on power order
+    const allTeamsByPower = all('SELECT id FROM hockey_teams WHERE world_id = ? ORDER BY power DESC', [worldId]);
+    allTeamsByPower.forEach((t, idx) => {
+      run('UPDATE hockey_teams SET world_ranking = ? WHERE id = ?', [idx + 1, t.id]);
+    });
+
+    // Generate players for all teams
+    generatePlayersForWorld(worldId);
+
     const world = get('SELECT * FROM hockey_worlds WHERE id = ?', [worldId]);
     const teams = all('SELECT * FROM hockey_teams WHERE world_id = ?', [worldId]);
 
@@ -129,6 +155,7 @@ router.delete('/worlds/:id', authMiddleware, (req, res) => {
       run('DELETE FROM hockey_matches WHERE season_id = ?', [season.id]);
     }
     run('DELETE FROM hockey_seasons WHERE world_id = ?', [req.params.id]);
+    run('DELETE FROM hockey_players WHERE world_id = ?', [req.params.id]);
     run('DELETE FROM hockey_teams WHERE world_id = ?', [req.params.id]);
     run('DELETE FROM hockey_season_history WHERE world_id = ?', [req.params.id]);
     run('DELETE FROM hockey_worlds WHERE id = ?', [req.params.id]);
@@ -156,7 +183,8 @@ router.post('/worlds/:id/reset', authMiddleware, (req, res) => {
     run('DELETE FROM hockey_seasons WHERE world_id = ?', [req.params.id]);
     run('DELETE FROM hockey_season_history WHERE world_id = ?', [req.params.id]);
 
-    // Delete all teams and recreate
+    // Delete all players and teams, then recreate
+    run('DELETE FROM hockey_players WHERE world_id = ?', [req.params.id]);
     run('DELETE FROM hockey_teams WHERE world_id = ?', [req.params.id]);
 
     // Recreate Top Division teams
@@ -186,6 +214,15 @@ router.post('/worlds/:id/reset', authMiddleware, (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'div2', NULL)
       `, [teamId, req.params.id, team.name, team.shortName, team.countryCode, team.flag, team.power, team.offense, team.defense, team.goaltending]);
     }
+
+    // Initialize world rankings based on power order
+    const allTeamsByPower = all('SELECT id FROM hockey_teams WHERE world_id = ? ORDER BY power DESC', [req.params.id]);
+    allTeamsByPower.forEach((t, idx) => {
+      run('UPDATE hockey_teams SET world_ranking = ? WHERE id = ?', [idx + 1, t.id]);
+    });
+
+    // Regenerate players for all teams
+    generatePlayersForWorld(req.params.id);
 
     const teams = all('SELECT * FROM hockey_teams WHERE world_id = ? ORDER BY division, power DESC', [req.params.id]);
     res.json({ message: 'World reset successfully', teams });
@@ -241,7 +278,11 @@ router.get('/worlds/:worldId/season', authMiddleware, (req, res) => {
         groupAStandings,
         groupBStandings,
         div2Standings: JSON.parse(season.div2_standings || '[]'),
-        playoffBracket: JSON.parse(season.playoff_bracket || '[]')
+        playoffBracket: JSON.parse(season.playoff_bracket || '[]'),
+        hostCountry: season.host_country ? String(season.host_country) : null,
+        hostCountryCode: season.host_country_code ? String(season.host_country_code) : null,
+        hostCities: season.host_cities ? JSON.parse(season.host_cities) : [],
+        allStars: season.all_stars ? JSON.parse(season.all_stars) : null
       }
     });
   } catch (error) {
@@ -264,23 +305,50 @@ router.post('/worlds/:worldId/season', authMiddleware, (req, res) => {
       return res.status(404).json({ error: 'World not found' });
     }
 
-    // Get Top Division teams by group
+    // Re-draw groups based on world_ranking before each season
+    const topTeams = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ? ORDER BY world_ranking ASC', [worldId, 'top']);
+    const div2Teams = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ?', [worldId, 'div2']);
+    console.log('Top division teams:', topTeams.length, 'Div2:', div2Teams.length);
+
+    if (topTeams.length !== 16) {
+      console.log('ERROR: Wrong top division team count:', topTeams.length);
+      return res.status(400).json({ error: `Need exactly 16 top division teams. Got ${topTeams.length}` });
+    }
+
+    // Serpentine draft using world_ranking order (teams are already sorted)
+    const { groupA: newGroupA, groupB: newGroupB } = assignTeamsToGroups(topTeams.map(t => ({
+      ...t, shortName: t.short_name, countryCode: t.country_code
+    })), { preSorted: true });
+
+    // Update group assignments in DB
+    for (const t of newGroupA) {
+      const dbTeam = topTeams.find(dt => dt.country_code === t.countryCode);
+      if (dbTeam) run('UPDATE hockey_teams SET group_name = ? WHERE id = ?', ['A', dbTeam.id]);
+    }
+    for (const t of newGroupB) {
+      const dbTeam = topTeams.find(dt => dt.country_code === t.countryCode);
+      if (dbTeam) run('UPDATE hockey_teams SET group_name = ? WHERE id = ?', ['B', dbTeam.id]);
+    }
+
+    // Re-fetch teams by group after re-draw
     const groupATeams = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ? AND group_name = ?', [worldId, 'top', 'A']);
     const groupBTeams = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ? AND group_name = ?', [worldId, 'top', 'B']);
-    const div2Teams = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ?', [worldId, 'div2']);
-    console.log('Team counts - Group A:', groupATeams.length, 'Group B:', groupBTeams.length, 'Div2:', div2Teams.length);
+    console.log('After re-draw - Group A:', groupATeams.length, 'Group B:', groupBTeams.length);
 
     if (groupATeams.length !== 8 || groupBTeams.length !== 8) {
-      console.log('ERROR: Wrong team count - Group A:', groupATeams.length, 'Group B:', groupBTeams.length);
+      console.log('ERROR: Wrong team count after re-draw - Group A:', groupATeams.length, 'Group B:', groupBTeams.length);
       return res.status(400).json({ error: `Need exactly 8 teams per group. Got A:${groupATeams.length}, B:${groupBTeams.length}` });
     }
+
+    // Generate host country and cities
+    const host = generateHost();
 
     // Create season
     const seasonId = uuidv4();
     run(`
-      INSERT INTO hockey_seasons (id, world_id, year, status, phase)
-      VALUES (?, ?, ?, 'in_progress', 'group')
-    `, [seasonId, worldId, year]);
+      INSERT INTO hockey_seasons (id, world_id, year, status, phase, host_country, host_cities, host_country_code)
+      VALUES (?, ?, ?, 'in_progress', 'group', ?, ?, ?)
+    `, [seasonId, worldId, year, host.country, JSON.stringify(host.cities), host.countryCode]);
 
     // Generate group schedules (round-robin within each group)
     const groupASchedule = generateGroupSchedule(groupATeams);
@@ -366,6 +434,36 @@ router.get('/seasons/:seasonId/group/:group', authMiddleware, (req, res) => {
   }
 });
 
+// Get match details (including events)
+router.get('/matches/:matchId', authMiddleware, (req, res) => {
+  try {
+    const matchId = req.params.matchId;
+    const match = get(`
+      SELECT m.*,
+        ht.name as home_team_name, ht.short_name as home_team_short, ht.country_code as home_team_flag,
+        at.name as away_team_name, at.short_name as away_team_short, at.country_code as away_team_flag
+      FROM hockey_matches m
+      JOIN hockey_teams ht ON m.home_team_id = ht.id
+      JOIN hockey_teams at ON m.away_team_id = at.id
+      WHERE m.id = ?
+    `, [matchId]);
+    if (!match) return res.status(404).json({ error: 'Match not found' });
+
+    let events = [];
+    try { events = JSON.parse(match.match_events || '[]'); } catch (e) { events = []; }
+
+    res.json({
+      match: {
+        ...match,
+        events
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching match:', error);
+    res.status(500).json({ error: 'Failed to fetch match' });
+  }
+});
+
 // Simulate a single match
 router.post('/matches/:matchId/simulate', authMiddleware, (req, res) => {
   try {
@@ -397,12 +495,13 @@ router.post('/matches/:matchId/simulate', authMiddleware, (req, res) => {
 
     // If specific scores provided (from client-side detailed simulation), use them
     if (typeof homeScore === 'number' && typeof awayScore === 'number') {
+      const { periodScores: clientPeriodScores } = req.body;
       result = {
         homeScore,
         awayScore,
         overtime: overtime || false,
         shootout: shootout || false,
-        periodScores: [], // Not tracked for client-provided results
+        periodScores: clientPeriodScores || [],
         events: events || []
       };
     } else {
@@ -425,8 +524,15 @@ router.post('/matches/:matchId/simulate', authMiddleware, (req, res) => {
         goaltending: match.away_goaltending
       };
 
+      // Load rosters for both teams
+      const homeRoster = all('SELECT * FROM hockey_players WHERE team_id = ?', [match.home_team_id]);
+      const awayRoster = all('SELECT * FROM hockey_players WHERE team_id = ?', [match.away_team_id]);
+
       const isPlayoff = match.stage !== 'group';
-      result = simulateHockeyMatch(homeTeam, awayTeam, isPlayoff, detailed);
+      result = simulateHockeyMatch(homeTeam, awayTeam, isPlayoff, true);
+      // Re-generate events with player data
+      const { generateMatchEvents } = require('../data/hockeyTeams');
+      result.events = generateMatchEvents(homeTeam, awayTeam, result.homeScore, result.awayScore, result.overtime, homeRoster, awayRoster);
     }
 
     // Update match in database
@@ -475,6 +581,7 @@ router.post('/seasons/:seasonId/simulate-group', authMiddleware, (req, res) => {
     `, [seasonId]);
 
     const results = [];
+    const { generateMatchEvents } = require('../data/hockeyTeams');
 
     for (const match of matches) {
       const homeTeam = {
@@ -495,15 +602,21 @@ router.post('/seasons/:seasonId/simulate-group', authMiddleware, (req, res) => {
         goaltending: match.away_goaltending
       };
 
+      // Load rosters
+      const homeRoster = all('SELECT * FROM hockey_players WHERE team_id = ?', [match.home_team_id]);
+      const awayRoster = all('SELECT * FROM hockey_players WHERE team_id = ?', [match.away_team_id]);
+
       const result = simulateHockeyMatch(homeTeam, awayTeam, false, false);
+      // Generate events with player data
+      const events = generateMatchEvents(homeTeam, awayTeam, result.homeScore, result.awayScore, result.overtime, homeRoster, awayRoster);
 
       run(`
         UPDATE hockey_matches
         SET home_score = ?, away_score = ?, overtime = ?, shootout = ?,
-            period_scores = ?, status = 'completed'
+            period_scores = ?, status = 'completed', match_events = ?
         WHERE id = ?
       `, [result.homeScore, result.awayScore, result.overtime ? 1 : 0, result.shootout ? 1 : 0,
-          JSON.stringify(result.periodScores), match.id]);
+          JSON.stringify(result.periodScores), JSON.stringify(events), match.id]);
 
       results.push({
         matchId: match.id,
@@ -831,32 +944,166 @@ router.post('/seasons/:seasonId/check-advance', authMiddleware, (req, res) => {
       playoffBracket.final.winner = goldTeam?.short_name;
       playoffBracket.bronzeMatch.winner = bronzeTeam?.short_name;
 
-      // Save to history (use full team names for readability)
+      // Save to history
       run(`
-        INSERT INTO hockey_season_history (id, world_id, year, gold_team_id, gold_team_name, silver_team_id, silver_team_name, bronze_team_id, bronze_team_name, promoted_teams, relegated_teams, final_standings)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO hockey_season_history (id, world_id, year, gold_team_id, gold_team_name, silver_team_id, silver_team_name, bronze_team_id, bronze_team_name, promoted_teams, relegated_teams, final_standings, host_country, host_cities, host_country_code, season_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         uuidv4(),
         season.world_id,
         season.year,
         goldTeamId,
-        goldTeam?.name,
+        goldTeam?.name || '',
         silverTeamId,
-        silverTeam?.name,
+        silverTeam?.name || '',
         bronzeTeamId,
-        bronzeTeam?.name,
+        bronzeTeam?.name || '',
         JSON.stringify(promotedTeams),
         JSON.stringify(relegatedTeams),
-        season.group_a_standings
+        season.group_a_standings,
+        season.host_country || '',
+        season.host_cities || '[]',
+        season.host_country_code || '',
+        seasonId
       ]);
 
-      run('UPDATE hockey_seasons SET status = ?, playoff_bracket = ? WHERE id = ?', ['completed', JSON.stringify(playoffBracket), seasonId]);
+      // === All-Stars Selection ===
+      let allStars = null;
+      try {
+        // Get all completed matches for this season
+        const allSeasonMatches = all('SELECT * FROM hockey_matches WHERE season_id = ? AND status = ?', [seasonId, 'completed']);
+        const playerStats = {};
+
+        for (const m of allSeasonMatches) {
+          let events;
+          try { events = JSON.parse(m.match_events || '[]'); } catch (e) { continue; }
+          for (const event of events) {
+            if (event.type !== 'goal') continue;
+            if (event.scorerId) {
+              if (!playerStats[event.scorerId]) {
+                playerStats[event.scorerId] = { playerId: event.scorerId, playerName: event.scorerName, jerseyNumber: event.scorerNumber, teamName: event.teamName, goals: 0, assists: 0, points: 0 };
+              }
+              playerStats[event.scorerId].goals++;
+              playerStats[event.scorerId].points++;
+            }
+            if (event.assists) {
+              for (const assist of event.assists) {
+                if (!assist.playerId) continue;
+                if (!playerStats[assist.playerId]) {
+                  playerStats[assist.playerId] = { playerId: assist.playerId, playerName: assist.playerName, jerseyNumber: assist.jerseyNumber, teamName: event.teamName, goals: 0, assists: 0, points: 0 };
+                }
+                playerStats[assist.playerId].assists++;
+                playerStats[assist.playerId].points++;
+              }
+            }
+          }
+        }
+
+        // Enrich with position
+        const statsList = Object.values(playerStats);
+        for (const stat of statsList) {
+          const player = get('SELECT position, country_code FROM hockey_players WHERE id = ?', [stat.playerId]);
+          if (player) { stat.position = player.position; stat.countryCode = player.country_code; }
+        }
+
+        statsList.sort((a, b) => b.points - a.points || b.goals - a.goals);
+
+        const forwards = statsList.filter(s => s.position === 'F');
+        const defensemen = statsList.filter(s => s.position === 'D');
+
+        // Best goalie: gold team's first goalie
+        const goldGoalie = get('SELECT * FROM hockey_players WHERE team_id = ? AND position = ? ORDER BY defense_skill DESC LIMIT 1', [goldTeamId, 'G']);
+
+        allStars = {
+          mvpForward: forwards[0] || null,
+          mvpDefenseman: defensemen[0] || null,
+          mvpGoalie: goldGoalie ? { playerId: goldGoalie.id, playerName: `${goldGoalie.first_name} ${goldGoalie.last_name}`, jerseyNumber: goldGoalie.jersey_number, teamName: goldTeam?.short_name, countryCode: goldGoalie.country_code } : null,
+          topScorer: statsList[0] || null
+        };
+      } catch (e) {
+        console.error('Error computing all-stars:', e);
+      }
+
+      // === Update World Rankings ===
+      try {
+        const rankingOrder = []; // array of team IDs in finishing order
+
+        // 1: Gold, 2: Silver, 3: Bronze, 4: 4th place (bronze loser)
+        const fourthTeamId = bronzeMatch.home_score > bronzeMatch.away_score ? bronzeMatch.away_team_id : bronzeMatch.home_team_id;
+        rankingOrder.push(goldTeamId, silverTeamId, bronzeTeamId, fourthTeamId);
+
+        // 5-8: QF losers, sorted by group stage points DESC
+        const qfMatchesForRank = all('SELECT * FROM hockey_matches WHERE season_id = ? AND playoff_round = ?', [seasonId, 'quarterfinal']);
+        const sfMatchesForRank = all('SELECT * FROM hockey_matches WHERE season_id = ? AND playoff_round = ?', [seasonId, 'semifinal']);
+        const sfTeamIds = new Set();
+        for (const m of sfMatchesForRank) { sfTeamIds.add(m.home_team_id); sfTeamIds.add(m.away_team_id); }
+        const qfLoserIds = [];
+        for (const m of qfMatchesForRank) {
+          const loserId = m.home_score > m.away_score ? m.away_team_id : m.home_team_id;
+          if (!sfTeamIds.has(loserId)) qfLoserIds.push(loserId);
+        }
+
+        // Get group stage standings for sorting
+        const grpAStandings = JSON.parse(season.group_a_standings || '[]');
+        const grpBStandings = JSON.parse(season.group_b_standings || '[]');
+        const standingsMap = {};
+        [...grpAStandings, ...grpBStandings].forEach(s => { standingsMap[s.teamId] = s; });
+
+        // Sort QF losers by group stage points DESC
+        qfLoserIds.sort((a, b) => ((standingsMap[b]?.points || 0) - (standingsMap[a]?.points || 0)));
+        rankingOrder.push(...qfLoserIds);
+
+        // 9-12: Group rank 5-6 (teams that finished 5th or 6th in their group)
+        const rank56Teams = [];
+        for (const standings of [grpAStandings, grpBStandings]) {
+          if (standings[4]) rank56Teams.push(standings[4]);
+          if (standings[5]) rank56Teams.push(standings[5]);
+        }
+        rank56Teams.sort((a, b) => (b.points || 0) - (a.points || 0));
+        rankingOrder.push(...rank56Teams.map(t => t.teamId));
+
+        // 13-14: Group rank 7 from each group
+        const rank7Teams = [];
+        if (grpAStandings[6]) rank7Teams.push(grpAStandings[6]);
+        if (grpBStandings[6]) rank7Teams.push(grpBStandings[6]);
+        rank7Teams.sort((a, b) => (b.points || 0) - (a.points || 0));
+        rankingOrder.push(...rank7Teams.map(t => t.teamId));
+
+        // 15-16: Relegated teams (group rank 8)
+        const rank8Teams = [];
+        if (grpAStandings[7]) rank8Teams.push(grpAStandings[7]);
+        if (grpBStandings[7]) rank8Teams.push(grpBStandings[7]);
+        rank8Teams.sort((a, b) => (b.points || 0) - (a.points || 0));
+        rankingOrder.push(...rank8Teams.map(t => t.teamId));
+
+        // 17-24: Div2 teams by standings order
+        const div2StandingsData = JSON.parse(season.div2_standings || '[]');
+        const div2TeamsDb = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ?', [season.world_id, 'div2']);
+        for (const d2s of div2StandingsData) {
+          const d2Team = div2TeamsDb.find(t => (t.short_name === d2s.teamName || t.name === d2s.teamName) ||
+            (t.country_code === d2s.countryCode));
+          if (d2Team) rankingOrder.push(d2Team.id);
+        }
+
+        // Update rankings
+        for (let i = 0; i < rankingOrder.length; i++) {
+          if (rankingOrder[i]) {
+            run('UPDATE hockey_teams SET world_ranking = ? WHERE id = ?', [i + 1, rankingOrder[i]]);
+          }
+        }
+        console.log('Updated world rankings for', rankingOrder.length, 'teams');
+      } catch (rankErr) {
+        console.error('Error updating world rankings:', rankErr);
+      }
+
+      run('UPDATE hockey_seasons SET status = ?, playoff_bracket = ?, all_stars = ? WHERE id = ?', ['completed', JSON.stringify(playoffBracket), allStars ? JSON.stringify(allStars) : null, seasonId]);
 
       return res.json({
         advanced: false,
         gold: goldTeam?.short_name,
         silver: silverTeam?.short_name,
         bronze: bronzeTeam?.short_name,
+        allStars,
         message: 'Championship complete!'
       });
     }
@@ -868,19 +1115,293 @@ router.post('/seasons/:seasonId/check-advance', authMiddleware, (req, res) => {
   }
 });
 
+// ==================== PLAYERS & STATS ====================
+
+// Get team roster
+router.get('/teams/:teamId/roster', authMiddleware, (req, res) => {
+  try {
+    const players = all(`
+      SELECT * FROM hockey_players WHERE team_id = ?
+      ORDER BY CASE position WHEN 'G' THEN 1 WHEN 'D' THEN 2 WHEN 'F' THEN 3 END, jersey_number
+    `, [req.params.teamId]);
+
+    const team = get('SELECT * FROM hockey_teams WHERE id = ?', [req.params.teamId]);
+    res.json({ team, players });
+  } catch (error) {
+    console.error('Error fetching roster:', error);
+    res.status(500).json({ error: 'Failed to fetch roster' });
+  }
+});
+
+// Get tournament stats (scoring leaders)
+router.get('/seasons/:seasonId/stats', authMiddleware, (req, res) => {
+  try {
+    const seasonId = req.params.seasonId;
+
+    // Get all completed matches for this season
+    const matches = all('SELECT * FROM hockey_matches WHERE season_id = ? AND status = ?', [seasonId, 'completed']);
+
+    // Aggregate goals and assists from match_events
+    const playerStats = {};
+
+    for (const match of matches) {
+      let events;
+      try {
+        events = JSON.parse(match.match_events || '[]');
+      } catch (e) {
+        continue;
+      }
+
+      for (const event of events) {
+        if (event.type !== 'goal') continue;
+
+        // Scorer
+        if (event.scorerId) {
+          if (!playerStats[event.scorerId]) {
+            playerStats[event.scorerId] = {
+              playerId: event.scorerId,
+              playerName: event.scorerName,
+              jerseyNumber: event.scorerNumber,
+              teamName: event.teamName,
+              goals: 0,
+              assists: 0,
+              points: 0
+            };
+          }
+          playerStats[event.scorerId].goals++;
+          playerStats[event.scorerId].points++;
+        }
+
+        // Assists
+        if (event.assists) {
+          for (const assist of event.assists) {
+            if (!assist.playerId) continue;
+            if (!playerStats[assist.playerId]) {
+              playerStats[assist.playerId] = {
+                playerId: assist.playerId,
+                playerName: assist.playerName,
+                jerseyNumber: assist.jerseyNumber,
+                teamName: event.teamName,
+                goals: 0,
+                assists: 0,
+                points: 0
+              };
+            }
+            playerStats[assist.playerId].assists++;
+            playerStats[assist.playerId].points++;
+          }
+        }
+      }
+    }
+
+    // Enrich with position data from hockey_players
+    const statsList = Object.values(playerStats);
+    for (const stat of statsList) {
+      const player = get('SELECT position, country_code, team_id FROM hockey_players WHERE id = ?', [stat.playerId]);
+      if (player) {
+        stat.position = player.position;
+        stat.countryCode = player.country_code;
+        stat.teamId = player.team_id;
+      }
+    }
+
+    // Sort by points desc, then goals desc
+    statsList.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      return b.goals - a.goals;
+    });
+
+    res.json({ stats: statsList.slice(0, 50) });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
 // Get season history
 router.get('/worlds/:worldId/history', authMiddleware, (req, res) => {
   try {
     const history = all(`
-      SELECT * FROM hockey_season_history
-      WHERE world_id = ?
-      ORDER BY year DESC
+      SELECT h.*,
+        gt.country_code as gold_country_code,
+        st.country_code as silver_country_code,
+        bt.country_code as bronze_country_code
+      FROM hockey_season_history h
+      LEFT JOIN hockey_teams gt ON h.gold_team_id = gt.id
+      LEFT JOIN hockey_teams st ON h.silver_team_id = st.id
+      LEFT JOIN hockey_teams bt ON h.bronze_team_id = bt.id
+      WHERE h.world_id = ?
+      ORDER BY h.year DESC
     `, [req.params.worldId]);
 
-    res.json({ history });
+    const cleanHistory = history.map(h => {
+      // Backfill season_id if missing
+      if (!h.season_id) {
+        const s = get('SELECT id FROM hockey_seasons WHERE world_id = ? AND year = ?', [h.world_id, h.year]);
+        h.season_id = s?.id || null;
+      }
+      // Backfill host_country_code if missing
+      if (!h.host_country_code && h.season_id) {
+        const s = get('SELECT host_country_code FROM hockey_seasons WHERE id = ?', [h.season_id]);
+        h.host_country_code = s?.host_country_code || null;
+      }
+      return {
+        ...h,
+        host_cities: h.host_cities ? JSON.parse(h.host_cities) : []
+      };
+    });
+
+    res.json({ history: cleanHistory });
   } catch (error) {
     console.error('Error fetching history:', error);
     res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
+// ==================== FULL SEASON (for viewing old tournaments) ====================
+
+// Get full season by ID (same data as current season endpoint)
+router.get('/seasons/:seasonId/full', authMiddleware, (req, res) => {
+  try {
+    const season = get('SELECT * FROM hockey_seasons WHERE id = ?', [req.params.seasonId]);
+
+    if (!season) {
+      return res.status(404).json({ error: 'Season not found' });
+    }
+
+    // Get matches for this season
+    const matches = all(`
+      SELECT m.*,
+        ht.name as home_team_name, ht.short_name as home_team_short, ht.flag as home_team_flag, ht.country_code as home_country_code,
+        at.name as away_team_name, at.short_name as away_team_short, at.flag as away_team_flag, at.country_code as away_country_code
+      FROM hockey_matches m
+      JOIN hockey_teams ht ON m.home_team_id = ht.id
+      JOIN hockey_teams at ON m.away_team_id = at.id
+      WHERE m.season_id = ?
+      ORDER BY m.stage, m.group_name, m.round_number, m.id
+    `, [season.id]);
+
+    // Get teams by group
+    const groupATeams = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ? AND group_name = ?', [season.world_id, 'top', 'A']);
+    const groupBTeams = all('SELECT * FROM hockey_teams WHERE world_id = ? AND division = ? AND group_name = ?', [season.world_id, 'top', 'B']);
+
+    // Calculate standings from matches
+    const groupAMatches = matches.filter(m => m.stage === 'group' && m.group_name === 'A');
+    const groupBMatches = matches.filter(m => m.stage === 'group' && m.group_name === 'B');
+
+    const groupAStandings = calculateStandings(groupATeams, groupAMatches);
+    const groupBStandings = calculateStandings(groupBTeams, groupBMatches);
+
+    res.json({
+      season: {
+        ...season,
+        matches,
+        groupAStandings,
+        groupBStandings,
+        div2Standings: JSON.parse(season.div2_standings || '[]'),
+        playoffBracket: JSON.parse(season.playoff_bracket || '[]'),
+        hostCountry: season.host_country ? String(season.host_country) : null,
+        hostCountryCode: season.host_country_code ? String(season.host_country_code) : null,
+        hostCities: season.host_cities ? JSON.parse(season.host_cities) : [],
+        allStars: season.all_stars ? JSON.parse(season.all_stars) : null
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching full season:', error);
+    res.status(500).json({ error: 'Failed to fetch season' });
+  }
+});
+
+// ==================== PLAYER CAREER ====================
+
+// Get player career stats across all tournaments
+router.get('/players/:playerId/career', authMiddleware, (req, res) => {
+  try {
+    const player = get('SELECT * FROM hockey_players WHERE id = ?', [req.params.playerId]);
+    if (!player) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    // Get all seasons for this player's world
+    const seasons = all('SELECT * FROM hockey_seasons WHERE world_id = ? ORDER BY year', [player.world_id]);
+
+    const seasonStats = [];
+    let careerGoals = 0, careerAssists = 0, careerGP = 0;
+
+    for (const season of seasons) {
+      // Get all completed matches for this season
+      const matches = all('SELECT * FROM hockey_matches WHERE season_id = ? AND status = ?', [season.id, 'completed']);
+
+      let goals = 0, assists = 0, gamesPlayed = 0;
+
+      for (const match of matches) {
+        let events;
+        try { events = JSON.parse(match.match_events || '[]'); } catch (e) { continue; }
+
+        // Check if this player participated (scored or assisted)
+        let played = false;
+        for (const event of events) {
+          if (event.type !== 'goal') continue;
+          if (event.scorerId === player.id) {
+            goals++;
+            played = true;
+          }
+          if (event.assists) {
+            for (const assist of event.assists) {
+              if (assist.playerId === player.id) {
+                assists++;
+                played = true;
+              }
+            }
+          }
+        }
+
+        // Count game as played if the player's team was involved
+        if (match.home_team_id === player.team_id || match.away_team_id === player.team_id) {
+          gamesPlayed++;
+        }
+      }
+
+      if (gamesPlayed > 0) {
+        seasonStats.push({
+          year: season.year,
+          seasonId: season.id,
+          gamesPlayed,
+          goals,
+          assists,
+          points: goals + assists
+        });
+        careerGoals += goals;
+        careerAssists += assists;
+        careerGP += gamesPlayed;
+      }
+    }
+
+    res.json({
+      player: {
+        id: player.id,
+        first_name: player.first_name,
+        last_name: player.last_name,
+        position: player.position,
+        jersey_number: player.jersey_number,
+        country_code: player.country_code,
+        shooting: player.shooting,
+        skating: player.skating,
+        passing: player.passing,
+        defense_skill: player.defense_skill,
+        physical: player.physical
+      },
+      seasons: seasonStats,
+      career: {
+        gamesPlayed: careerGP,
+        goals: careerGoals,
+        assists: careerAssists,
+        points: careerGoals + careerAssists
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching player career:', error);
+    res.status(500).json({ error: 'Failed to fetch player career' });
   }
 });
 

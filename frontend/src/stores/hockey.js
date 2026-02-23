@@ -11,6 +11,11 @@ export const useHockeyStore = defineStore('hockey', () => {
   const div2Standings = ref([])
   const playoffBracket = ref(null)
   const seasonHistory = ref([])
+  const teamRoster = ref(null)
+  const tournamentStats = ref([])
+  const allStars = ref(null)
+  const viewingHistoric = ref(false)
+  const playerCareer = ref(null)
   const loading = ref(false)
   const error = ref(null)
 
@@ -106,6 +111,7 @@ export const useHockeyStore = defineStore('hockey', () => {
         groupBStandings.value = response.data.season.groupBStandings || []
         div2Standings.value = response.data.season.div2Standings || []
         playoffBracket.value = response.data.season.playoffBracket || null
+        allStars.value = response.data.season.allStars || null
       }
       return response.data.season
     } catch (err) {
@@ -159,6 +165,7 @@ export const useHockeyStore = defineStore('hockey', () => {
         payload.overtime = result.overtime || false
         payload.shootout = result.shootout || false
         payload.events = result.events || []
+        payload.periodScores = result.periodScores || []
       }
       const response = await api.post(`/hockey/matches/${matchId}/simulate`, payload)
       return response.data
@@ -235,6 +242,83 @@ export const useHockeyStore = defineStore('hockey', () => {
     }
   }
 
+  async function fetchTeamRoster(teamId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.get(`/hockey/teams/${teamId}/roster`)
+      teamRoster.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch roster'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchTournamentStats(seasonId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.get(`/hockey/seasons/${seasonId}/stats`)
+      tournamentStats.value = response.data.stats
+      return response.data.stats
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch stats'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchMatchDetails(matchId) {
+    try {
+      const response = await api.get(`/hockey/matches/${matchId}`)
+      return response.data.match
+    } catch (err) {
+      console.error('Failed to fetch match details:', err)
+      throw err
+    }
+  }
+
+  async function fetchSeasonById(seasonId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.get(`/hockey/seasons/${seasonId}/full`)
+      currentSeason.value = response.data.season
+      if (response.data.season) {
+        groupAStandings.value = response.data.season.groupAStandings || []
+        groupBStandings.value = response.data.season.groupBStandings || []
+        div2Standings.value = response.data.season.div2Standings || []
+        playoffBracket.value = response.data.season.playoffBracket || null
+        allStars.value = response.data.season.allStars || null
+      }
+      return response.data.season
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch season'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchPlayerCareer(playerId) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.get(`/hockey/players/${playerId}/career`)
+      playerCareer.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to fetch player career'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function fetchHistory(worldId) {
     loading.value = true
     error.value = null
@@ -259,6 +343,11 @@ export const useHockeyStore = defineStore('hockey', () => {
     div2Standings,
     playoffBracket,
     seasonHistory,
+    teamRoster,
+    tournamentStats,
+    allStars,
+    viewingHistoric,
+    playerCareer,
     loading,
     error,
     fetchWorlds,
@@ -267,6 +356,7 @@ export const useHockeyStore = defineStore('hockey', () => {
     deleteWorld,
     resetWorld,
     fetchSeason,
+    fetchSeasonById,
     createSeason,
     fetchGroupMatches,
     simulateMatch,
@@ -274,6 +364,10 @@ export const useHockeyStore = defineStore('hockey', () => {
     startPlayoffs,
     fetchPlayoffs,
     checkPlayoffAdvance,
-    fetchHistory
+    fetchTeamRoster,
+    fetchTournamentStats,
+    fetchMatchDetails,
+    fetchHistory,
+    fetchPlayerCareer
   }
 })

@@ -155,11 +155,28 @@ function generatePeriodScores(totalHome, totalAway, overtime) {
   return periods;
 }
 
-// Generate detailed match events
-function generateMatchEvents(homeTeam, awayTeam, finalHomeScore, finalAwayScore, overtime) {
+// Pick a player weighted by a specific skill
+function weightedPickBySkill(players, skillName) {
+  if (!players || players.length === 0) return null;
+  const weights = players.map(p => Math.max(1, p[skillName] || 50));
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  let rand = Math.random() * totalWeight;
+  for (let i = 0; i < players.length; i++) {
+    rand -= weights[i];
+    if (rand <= 0) return players[i];
+  }
+  return players[players.length - 1];
+}
+
+// Generate detailed match events (optionally with player rosters)
+function generateMatchEvents(homeTeam, awayTeam, finalHomeScore, finalAwayScore, overtime, homeRoster, awayRoster) {
   const events = [];
   let homeScore = 0;
   let awayScore = 0;
+
+  // Filter roster by skaters (non-goalies)
+  const homeSkaters = homeRoster ? homeRoster.filter(p => p.position !== 'G') : null;
+  const awaySkaters = awayRoster ? awayRoster.filter(p => p.position !== 'G') : null;
 
   // Total match time: 60 minutes (+ 20 for OT)
   const totalMinutes = overtime ? 65 : 60; // OT is 5 min sudden death
@@ -179,29 +196,70 @@ function generateMatchEvents(homeTeam, awayTeam, finalHomeScore, finalAwayScore,
   for (const minute of goalMinutes) {
     const isHomeGoal = Math.random() < (homeGoalsRemaining / (homeGoalsRemaining + awayGoalsRemaining));
 
+    let team, teamSide, teamName, skaters;
     if (isHomeGoal && homeGoalsRemaining > 0) {
       homeScore++;
       homeGoalsRemaining--;
-      events.push({
-        minute,
-        type: 'goal',
-        team: 'home',
-        teamName: homeTeam.short_name || homeTeam.shortName,
-        score: `${homeScore}:${awayScore}`,
-        period: minute <= 20 ? 1 : minute <= 40 ? 2 : minute <= 60 ? 3 : 'OT'
-      });
+      team = homeTeam;
+      teamSide = 'home';
+      teamName = homeTeam.short_name || homeTeam.shortName;
+      skaters = homeSkaters;
     } else if (awayGoalsRemaining > 0) {
       awayScore++;
       awayGoalsRemaining--;
-      events.push({
-        minute,
-        type: 'goal',
-        team: 'away',
-        teamName: awayTeam.short_name || awayTeam.shortName,
-        score: `${homeScore}:${awayScore}`,
-        period: minute <= 20 ? 1 : minute <= 40 ? 2 : minute <= 60 ? 3 : 'OT'
-      });
+      team = awayTeam;
+      teamSide = 'away';
+      teamName = awayTeam.short_name || awayTeam.shortName;
+      skaters = awaySkaters;
+    } else {
+      continue;
     }
+
+    const event = {
+      minute,
+      type: 'goal',
+      team: teamSide,
+      teamName,
+      score: `${homeScore}:${awayScore}`,
+      period: minute <= 20 ? 1 : minute <= 40 ? 2 : minute <= 60 ? 3 : 'OT'
+    };
+
+    // Add scorer and assists if roster available
+    if (skaters && skaters.length > 0) {
+      const scorer = weightedPickBySkill(skaters, 'shooting');
+      event.scorerId = scorer.id;
+      event.scorerName = `${scorer.first_name || scorer.firstName} ${scorer.last_name || scorer.lastName}`;
+      event.scorerNumber = scorer.jersey_number || scorer.jerseyNumber;
+
+      // ~15% unassisted, ~40% one assist, ~45% two assists
+      const assistRoll = Math.random();
+      const assists = [];
+      const eligibleAssisters = skaters.filter(p => (p.id || p.jerseyNumber) !== (scorer.id || scorer.jerseyNumber));
+
+      if (assistRoll >= 0.15 && eligibleAssisters.length > 0) {
+        const a1 = weightedPickBySkill(eligibleAssisters, 'passing');
+        assists.push({
+          playerId: a1.id,
+          playerName: `${a1.first_name || a1.firstName} ${a1.last_name || a1.lastName}`,
+          jerseyNumber: a1.jersey_number || a1.jerseyNumber
+        });
+
+        if (assistRoll >= 0.55 && eligibleAssisters.length > 1) {
+          const remainingAssisters = eligibleAssisters.filter(p => (p.id || p.jerseyNumber) !== (a1.id || a1.jerseyNumber));
+          if (remainingAssisters.length > 0) {
+            const a2 = weightedPickBySkill(remainingAssisters, 'passing');
+            assists.push({
+              playerId: a2.id,
+              playerName: `${a2.first_name || a2.firstName} ${a2.last_name || a2.lastName}`,
+              jerseyNumber: a2.jersey_number || a2.jerseyNumber
+            });
+          }
+        }
+      }
+      event.assists = assists;
+    }
+
+    events.push(event);
   }
 
   // Add period break markers
@@ -335,9 +393,9 @@ function calculateStandings(teams, matches) {
 }
 
 // Assign teams to groups (seeded)
-function assignTeamsToGroups(teams) {
-  // Sort by power (strongest first)
-  const sorted = [...teams].sort((a, b) => b.power - a.power);
+// If preSorted is true, teams are already in seeding order (best first)
+function assignTeamsToGroups(teams, { preSorted = false } = {}) {
+  const sorted = preSorted ? [...teams] : [...teams].sort((a, b) => b.power - a.power);
 
   const groupA = [];
   const groupB = [];
@@ -443,6 +501,35 @@ function simulateDiv3Season() {
   return standings[0];
 }
 
+// IIHF World Championship potential host locations
+const hostCountries = [
+  { country: 'Finland', countryCode: 'FIN', cities: ['Helsinki', 'Tampere', 'Turku', 'Oulu'] },
+  { country: 'Sweden', countryCode: 'SWE', cities: ['Stockholm', 'Gothenburg', 'Malmö', 'Jönköping'] },
+  { country: 'Czechia', countryCode: 'CZE', cities: ['Prague', 'Ostrava', 'Brno', 'Pardubice'] },
+  { country: 'Switzerland', countryCode: 'SUI', cities: ['Zurich', 'Bern', 'Lausanne', 'Fribourg'] },
+  { country: 'Slovakia', countryCode: 'SVK', cities: ['Bratislava', 'Košice'] },
+  { country: 'Latvia', countryCode: 'LAT', cities: ['Riga'] },
+  { country: 'Denmark', countryCode: 'DEN', cities: ['Copenhagen', 'Herning'] },
+  { country: 'France', countryCode: 'FRA', cities: ['Paris', 'Lyon', 'Montpellier'] },
+  { country: 'Germany', countryCode: 'GER', cities: ['Cologne', 'Munich', 'Berlin', 'Nuremberg'] },
+  { country: 'Canada', countryCode: 'CAN', cities: ['Montreal', 'Toronto', 'Halifax', 'Edmonton'] },
+  { country: 'USA', countryCode: 'USA', cities: ['Tampa', 'Buffalo', 'Detroit', 'Minneapolis'] },
+  { country: 'Norway', countryCode: 'NOR', cities: ['Oslo', 'Trondheim', 'Stavanger'] },
+  { country: 'Austria', countryCode: 'AUT', cities: ['Vienna', 'Graz', 'Innsbruck'] },
+  { country: 'Great Britain', countryCode: 'GBR', cities: ['London', 'Manchester', 'Nottingham'] },
+  { country: 'Kazakhstan', countryCode: 'KAZ', cities: ['Astana', 'Almaty'] },
+];
+
+// Generate a random host for a championship
+function generateHost() {
+  const host = hostCountries[Math.floor(Math.random() * hostCountries.length)];
+  const maxCities = Math.min(4, host.cities.length);
+  const numCities = 1 + Math.floor(Math.random() * maxCities);
+  const shuffled = [...host.cities].sort(() => Math.random() - 0.5);
+  const cities = shuffled.slice(0, numCities);
+  return { country: host.country, countryCode: host.countryCode, cities };
+}
+
 module.exports = {
   topDivisionTeams,
   division2Teams,
@@ -454,5 +541,6 @@ module.exports = {
   calculateStandings,
   assignTeamsToGroups,
   simulateDiv2Season,
-  simulateDiv3Season
+  simulateDiv3Season,
+  generateHost
 };
