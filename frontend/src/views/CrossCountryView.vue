@@ -739,7 +739,12 @@
       <div class="modal modal-lg">
         <div class="modal-header">
           <h2>{{ editingSkier ? 'Edit Skier' : 'Add New Skier' }}</h2>
-          <button @click="closeSkierModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          <div class="modal-header-actions">
+            <button type="button" @click="showNamePicker = true" class="btn btn-ghost btn-sm" title="Pick from Name Database">
+              <i class="fa-solid fa-address-book"></i> Pick Name
+            </button>
+            <button @click="closeSkierModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          </div>
         </div>
         <form @submit.prevent="handleSaveSkier" class="modal-body">
           <div class="form-row">
@@ -939,6 +944,7 @@
       </div>
     </div>
   </div>
+    <NamePicker v-model="showNamePicker" @select="handleNamePicked" />
 </template>
 
 <script setup>
@@ -950,6 +956,7 @@ import { useCrossCountryStore } from '../stores/crosscountry'
 import { useTeamsStore } from '../stores/teams'
 import { useWeekStatusStore } from '../stores/weekStatus'
 import '../assets/sport-view.css'
+import NamePicker from '../components/NamePicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1233,6 +1240,7 @@ const selectedCompetitor = ref(null)
 
 // Skier management state
 const showSkierModal = ref(false)
+const showNamePicker = ref(false)
 const editingSkier = ref(null)
 const skierToDelete = ref(null)
 const showDeleteAllSkiersConfirm = ref(false)
@@ -1549,6 +1557,12 @@ function openEditSkierModal(skier) {
     form: skier.form
   }
   showSkierModal.value = true
+}
+
+function handleNamePicked(data) {
+  skierForm.value.first_name = data.first_name
+  skierForm.value.last_name = data.last_name
+  if (data.country_code) skierForm.value.country = data.country_code
 }
 
 function closeSkierModal() {

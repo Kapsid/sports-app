@@ -535,7 +535,12 @@
       <div class="modal jumper-modal fade-in">
         <div class="modal-header">
           <h2>{{ editingJumper ? 'Edit Jumper' : 'Add New Jumper' }}</h2>
-          <button @click="closeJumperModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          <div class="modal-header-actions">
+            <button type="button" @click="showNamePicker = true" class="btn btn-ghost btn-sm" title="Pick from Name Database">
+              <i class="fa-solid fa-address-book"></i> Pick Name
+            </button>
+            <button @click="closeJumperModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          </div>
         </div>
         <form @submit.prevent="handleSaveJumper">
           <div class="form-row">
@@ -1241,6 +1246,7 @@
       </div>
     </div>
   </div>
+    <NamePicker v-model="showNamePicker" @select="handleNamePicked" />
 </template>
 
 <script setup>
@@ -1253,6 +1259,7 @@ import { useSeasonsStore } from '../stores/seasons'
 import { useTeamsStore } from '../stores/teams'
 import { useWeekStatusStore } from '../stores/weekStatus'
 import '../assets/sport-view.css'
+import NamePicker from '../components/NamePicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1392,6 +1399,7 @@ const showResetConfirm = ref(false)
 const simulating = ref(false)
 
 const showJumperModal = ref(false)
+const showNamePicker = ref(false)
 const editingJumper = ref(null)
 const saving = ref(false)
 const formError = ref(null)
@@ -1852,6 +1860,12 @@ async function openEditJumperModal(jumper) {
   jumperForm.value = { first_name: jumper.first_name, last_name: jumper.last_name, country: jumper.country, team_id: jumper.team_id || '', skill_jumping: jumper.skill_jumping, skill_flight: jumper.skill_flight, skill_landing: jumper.skill_landing, consistency: jumper.consistency }
   formError.value = null
   showJumperModal.value = true
+}
+
+function handleNamePicked(data) {
+  jumperForm.value.first_name = data.first_name
+  jumperForm.value.last_name = data.last_name
+  if (data.country_code) jumperForm.value.country = data.country_code
 }
 
 function closeJumperModal() { showJumperModal.value = false; editingJumper.value = null }

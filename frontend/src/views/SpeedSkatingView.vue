@@ -746,7 +746,12 @@
       <div class="modal skater-modal fade-in">
         <div class="modal-header">
           <h2>{{ editingSkater ? 'Edit Skater' : 'Create New Skater' }}</h2>
-          <button @click="closeSkaterModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          <div class="modal-header-actions">
+            <button type="button" @click="showNamePicker = true" class="btn btn-ghost btn-sm" title="Pick from Name Database">
+              <i class="fa-solid fa-address-book"></i> Pick Name
+            </button>
+            <button @click="closeSkaterModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          </div>
         </div>
         <div class="modal-body">
           <form @submit.prevent="handleSaveSkater">
@@ -890,7 +895,8 @@
       </div>
     </div>
   </div>
-</template>
+    <NamePicker v-model="showNamePicker" @select="handleNamePicked" />
+  </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
@@ -900,6 +906,7 @@ import { useSpeedSkatingStore } from '../stores/speedSkating'
 import { useTeamsStore } from '../stores/teams'
 import { useWeekStatusStore } from '../stores/weekStatus'
 import '../assets/sport-view.css'
+import NamePicker from '../components/NamePicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -963,6 +970,7 @@ const totalLapsRef = ref(1) // Total laps for display
 
 // Skater modal
 const showSkaterModal = ref(false)
+const showNamePicker = ref(false)
 const editingSkater = ref(null)
 const savingSkater = ref(false)
 const skaterForm = ref({
@@ -1657,6 +1665,12 @@ function openEditSkaterModal(skater) {
     form: skater.form
   }
   showSkaterModal.value = true
+}
+
+function handleNamePicked(data) {
+  skaterForm.value.first_name = data.first_name
+  skaterForm.value.last_name = data.last_name
+  if (data.country_code) skaterForm.value.country = data.country_code
 }
 
 function closeSkaterModal() {

@@ -1222,6 +1222,90 @@ async function initializeDatabase() {
     )
   `);
 
+  // Golf specific tables
+
+  // Golf worlds table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS golf_worlds (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Golf players table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS golf_players (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      country TEXT NOT NULL,
+      skill_driving INTEGER DEFAULT 70,
+      skill_iron_play INTEGER DEFAULT 70,
+      skill_short_game INTEGER DEFAULT 70,
+      skill_putting INTEGER DEFAULT 70,
+      skill_mental INTEGER DEFAULT 70,
+      consistency INTEGER DEFAULT 70,
+      form INTEGER DEFAULT 70,
+      ranking_points INTEGER DEFAULT 0,
+      career_wins INTEGER DEFAULT 0,
+      career_major_wins INTEGER DEFAULT 0,
+      career_top10s INTEGER DEFAULT 0,
+      tournaments_played INTEGER DEFAULT 0,
+      best_finish INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES golf_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Golf seasons table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS golf_seasons (
+      id TEXT PRIMARY KEY,
+      world_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      status TEXT DEFAULT 'not_started',
+      current_event_index INTEGER DEFAULT 0,
+      standings TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (world_id) REFERENCES golf_worlds(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Golf events table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS golf_events (
+      id TEXT PRIMARY KEY,
+      season_id TEXT NOT NULL,
+      event_index INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      location TEXT NOT NULL,
+      country TEXT NOT NULL,
+      course_name TEXT NOT NULL,
+      course_par INTEGER DEFAULT 72,
+      tournament_type TEXT NOT NULL,
+      field_size INTEGER DEFAULT 120,
+      date TEXT NOT NULL,
+      status TEXT DEFAULT 'upcoming',
+      round1_results TEXT DEFAULT '[]',
+      round2_results TEXT DEFAULT '[]',
+      round3_results TEXT DEFAULT '[]',
+      round4_results TEXT DEFAULT '[]',
+      cut_line INTEGER,
+      results TEXT DEFAULT '[]',
+      current_round INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (season_id) REFERENCES golf_seasons(id) ON DELETE CASCADE
+    )
+  `);
+
   // MMA specific tables
 
   // MMA organizations table
@@ -1343,6 +1427,19 @@ async function initializeDatabase() {
       FOREIGN KEY (event_id) REFERENCES mma_events(id) ON DELETE CASCADE,
       FOREIGN KEY (fighter1_id) REFERENCES mma_fighters(id),
       FOREIGN KEY (fighter2_id) REFERENCES mma_fighters(id)
+    )
+  `);
+
+  // Global sportsmen name database (user-scoped, across all worlds/sports)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sportsmen (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      country_code TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 

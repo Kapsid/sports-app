@@ -176,7 +176,7 @@ const modules = ref([
     description: 'PGA Tour, majors, and professional golf tournaments',
     icon: 'fa-solid fa-golf-ball-tee',
     gradient: 'linear-gradient(135deg, #34d399, #10b981)',
-    enabled: false,
+    enabled: true,
     route: '/golf'
   },
   {
@@ -214,6 +214,15 @@ const modules = ref([
     gradient: 'linear-gradient(135deg, #38bdf8, #0ea5e9)',
     enabled: true,
     route: '/hockey'
+  },
+  {
+    id: 'name-database',
+    name: 'Name Database',
+    description: 'Manage a personal database of athlete names reusable across all sports',
+    icon: 'fa-solid fa-address-book',
+    gradient: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
+    enabled: true,
+    route: '/name-database'
   }
 ])
 

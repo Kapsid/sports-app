@@ -23,6 +23,8 @@ const summerWorldsRoutes = require('./routes/summer-worlds');
 const handballRoutes = require('./routes/handball');
 const hockeyRoutes = require('./routes/hockey');
 const mmaRoutes = require('./routes/mma');
+const sportsmenRoutes = require('./routes/sportsmen');
+const golfRoutes = require('./routes/golf');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -62,6 +64,8 @@ async function startServer() {
     app.use('/api/handball', handballRoutes);
     app.use('/api/hockey', hockeyRoutes);
     app.use('/api/mma', mmaRoutes);
+    app.use('/api/sportsmen', sportsmenRoutes);
+    app.use('/api/golf', golfRoutes);
 
     // Serve static files in production
     if (process.env.NODE_ENV === 'production') {

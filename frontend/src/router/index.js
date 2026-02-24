@@ -177,6 +177,32 @@ const routes = [
     component: () => import('../views/MMAEventView.vue'),
     meta: { requiresAuth: true }
   },
+  // Golf
+  {
+    path: '/golf',
+    name: 'GolfDashboard',
+    component: () => import('../views/GolfDashboardView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/golf/world/:id',
+    name: 'GolfWorld',
+    component: () => import('../views/GolfWorldView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/golf/world/:worldId/event/:eventId',
+    name: 'GolfEvent',
+    component: () => import('../views/GolfEventView.vue'),
+    meta: { requiresAuth: true }
+  },
+  // Name Database
+  {
+    path: '/name-database',
+    name: 'NameDatabase',
+    component: () => import('../views/SportsmenView.vue'),
+    meta: { requiresAuth: true }
+  },
   // Summer Sports
   {
     path: '/summer-sports',

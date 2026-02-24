@@ -1,5 +1,5 @@
 <template>
-  <div class="tennis-world">
+  <div class="golf-world">
     <header class="page-header">
       <div class="container header-content">
         <div class="header-left">
@@ -7,8 +7,8 @@
             <i class="fa-solid fa-arrow-left"></i>
           </button>
           <div class="brand">
-            <i class="fa-solid fa-baseball"></i>
-            <span>Tennis</span>
+            <i class="fa-solid fa-golf-ball-tee"></i>
+            <span>Golf</span>
           </div>
         </div>
         <div class="breadcrumb" v-if="world">
@@ -61,7 +61,7 @@
                 <button
                   v-if="!currentSeason"
                   @click="handleCreateSeason"
-                  class="btn btn-primary tennis-btn"
+                  class="btn btn-primary golf-btn"
                   :disabled="creatingOrResetting"
                 >
                   <i v-if="creatingOrResetting" class="fa-solid fa-spinner fa-spin"></i>
@@ -85,7 +85,7 @@
                 <i class="fa-solid fa-calendar-plus"></i>
               </div>
               <h3>No Season Created</h3>
-              <p>Create a season to generate the tournament calendar with Grand Slams and ATP events.</p>
+              <p>Create a season to generate the tournament calendar with Majors and PGA Tour events.</p>
             </div>
 
             <div v-else class="calendar-grid">
@@ -93,7 +93,7 @@
                 v-for="event in events"
                 :key="event.id"
                 class="tournament-card clickable"
-                :class="[getSurfaceClass(event.surface), getStatusClass(event.status)]"
+                :class="[getTournamentTypeClass(event.tournament_type), getStatusClass(event.status)]"
                 @click="goToEvent(event)"
               >
                 <div class="tournament-header">
@@ -114,13 +114,13 @@
                     <i class="fa-solid fa-calendar"></i>
                     <span>{{ formatDate(event.date) }}</span>
                   </div>
-                  <div class="detail">
-                    <i class="fa-solid fa-layer-group"></i>
-                    <span class="surface-tag" :class="event.surface">{{ formatSurface(event.surface) }}</span>
+                  <div v-if="event.course_name" class="detail">
+                    <i class="fa-solid fa-flag"></i>
+                    <span>{{ event.course_name }}</span>
                   </div>
-                  <div class="detail">
-                    <i class="fa-solid fa-trophy"></i>
-                    <span>{{ event.points }} pts</span>
+                  <div v-if="event.course_par" class="detail">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <span>Par {{ event.course_par }}</span>
                   </div>
                 </div>
                 <div v-if="event.winner" class="tournament-winner">
@@ -141,7 +141,7 @@
             <div class="section-header">
               <h2>
                 <i class="fa-solid fa-ranking-star"></i>
-                ATP Rankings
+                FedExCup Rankings
               </h2>
             </div>
 
@@ -150,7 +150,7 @@
                 <i class="fa-solid fa-chart-line"></i>
               </div>
               <h3>No Rankings Yet</h3>
-              <p>Generate players and simulate tournaments to see ATP rankings.</p>
+              <p>Generate golfers and simulate tournaments to see FedExCup rankings.</p>
             </div>
 
             <div v-else class="standings-table">
@@ -159,9 +159,9 @@
                   <tr>
                     <th class="rank-col">Rank</th>
                     <th class="player-col">Player</th>
-                    <th class="country-col">Country</th>
                     <th class="points-col">Points</th>
-                    <th class="skill-col">Avg Skill</th>
+                    <th class="wins-col">Wins</th>
+                    <th class="top10-col">Top 10s</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -170,18 +170,21 @@
                       <span class="rank-badge" :class="getRankClass(player.displayRank)">{{ player.displayRank }}</span>
                     </td>
                     <td class="player-col">
-                      <span class="player-name clickable" @click="goToPlayer(player.playerId)">
-                        {{ player.firstName }} {{ player.lastName }}
-                      </span>
-                    </td>
-                    <td class="country-col">
-                      <img :src="`/flags/${player.country}.png`" class="standings-flag" />
+                      <div class="player-info">
+                        <img :src="`/flags/${player.country}.png`" class="standings-flag" />
+                        <span class="player-name">
+                          {{ player.firstName }} {{ player.lastName }}
+                        </span>
+                      </div>
                     </td>
                     <td class="points-col">
                       <span class="points">{{ player.points.toLocaleString() }}</span>
                     </td>
-                    <td class="skill-col">
-                      <span class="skill-badge" :class="getSkillClass(player.avgSkill)">{{ player.avgSkill }}</span>
+                    <td class="wins-col">
+                      <span class="wins-value">{{ player.wins || 0 }}</span>
+                    </td>
+                    <td class="top10-col">
+                      <span class="top10-value">{{ player.top10s || 0 }}</span>
                     </td>
                   </tr>
                 </tbody>
@@ -224,12 +227,12 @@
             </div>
           </div>
 
-          <!-- Players Tab -->
-          <div v-if="activeTab === 'players'" class="tab-content fade-in">
+          <!-- Golfers Tab -->
+          <div v-if="activeTab === 'golfers'" class="tab-content fade-in">
             <div class="section-header">
               <h2>
                 <i class="fa-solid fa-users"></i>
-                Players ({{ players.length }})
+                Golfers ({{ players.length }})
               </h2>
               <div class="header-actions">
                 <button
@@ -240,9 +243,9 @@
                 >
                   <i v-if="generatingPlayers" class="fa-solid fa-spinner fa-spin"></i>
                   <i v-else class="fa-solid fa-wand-magic-sparkles"></i>
-                  Generate 100 Players
+                  Generate 120 Golfers
                 </button>
-                <button @click="showAddPlayer = true" class="btn btn-primary tennis-btn">
+                <button @click="showAddPlayer = true" class="btn btn-primary golf-btn">
                   <i class="fa-solid fa-plus"></i>
                   Add Player
                 </button>
@@ -261,8 +264,8 @@
               <div class="empty-icon">
                 <i class="fa-solid fa-user-plus"></i>
               </div>
-              <h3>No Players Yet</h3>
-              <p>Generate players to populate your tennis world with ATP tour competitors.</p>
+              <h3>No Golfers Yet</h3>
+              <p>Generate golfers to populate your golf world with PGA Tour competitors.</p>
             </div>
 
             <div v-else class="players-table">
@@ -273,13 +276,12 @@
                     <th class="col-name">Player</th>
                     <th class="col-country">Country</th>
                     <th class="col-points">Points</th>
-                    <th class="col-skill">SRV</th>
-                    <th class="col-skill">FH</th>
-                    <th class="col-skill">BH</th>
-                    <th class="col-skill">VOL</th>
-                    <th class="col-skill">MOV</th>
+                    <th class="col-skill">DRV</th>
+                    <th class="col-skill">IRN</th>
+                    <th class="col-skill">SHG</th>
+                    <th class="col-skill">PUT</th>
                     <th class="col-skill">MNT</th>
-                    <th class="col-specialty">Specialty</th>
+                    <th class="col-skill">CON</th>
                     <th class="col-actions"></th>
                   </tr>
                 </thead>
@@ -289,7 +291,7 @@
                       <span class="rank-num">{{ player.rank }}</span>
                     </td>
                     <td class="col-name">
-                      <span class="player-name-cell clickable" @click="goToPlayer(player.id)">
+                      <span class="player-name-cell">
                         {{ player.first_name }} {{ player.last_name }}
                       </span>
                     </td>
@@ -300,25 +302,22 @@
                       <span class="points-value">{{ player.ranking_points.toLocaleString() }}</span>
                     </td>
                     <td class="col-skill">
-                      <span class="skill-cell" :class="getSkillClass(player.skill_serve)">{{ player.skill_serve }}</span>
+                      <span class="skill-cell" :class="getSkillClass(player.skill_driving)">{{ player.skill_driving }}</span>
                     </td>
                     <td class="col-skill">
-                      <span class="skill-cell" :class="getSkillClass(player.skill_forehand)">{{ player.skill_forehand }}</span>
+                      <span class="skill-cell" :class="getSkillClass(player.skill_iron_play)">{{ player.skill_iron_play }}</span>
                     </td>
                     <td class="col-skill">
-                      <span class="skill-cell" :class="getSkillClass(player.skill_backhand)">{{ player.skill_backhand }}</span>
+                      <span class="skill-cell" :class="getSkillClass(player.skill_short_game)">{{ player.skill_short_game }}</span>
                     </td>
                     <td class="col-skill">
-                      <span class="skill-cell" :class="getSkillClass(player.skill_volley)">{{ player.skill_volley }}</span>
-                    </td>
-                    <td class="col-skill">
-                      <span class="skill-cell" :class="getSkillClass(player.skill_movement)">{{ player.skill_movement }}</span>
+                      <span class="skill-cell" :class="getSkillClass(player.skill_putting)">{{ player.skill_putting }}</span>
                     </td>
                     <td class="col-skill">
                       <span class="skill-cell" :class="getSkillClass(player.skill_mental)">{{ player.skill_mental }}</span>
                     </td>
-                    <td class="col-specialty">
-                      <span class="specialty-tag" :class="player.specialty">{{ formatSpecialtyShort(player.specialty) }}</span>
+                    <td class="col-skill">
+                      <span class="skill-cell" :class="getSkillClass(player.skill_consistency)">{{ player.skill_consistency }}</span>
                     </td>
                     <td class="col-actions">
                       <button
@@ -400,13 +399,13 @@
     <div v-if="showDeleteAllConfirm" class="modal-overlay" @click.self="showDeleteAllConfirm = false">
       <div class="modal fade-in">
         <div class="modal-header">
-          <h2>Delete All Players</h2>
+          <h2>Delete All Golfers</h2>
           <button @click="showDeleteAllConfirm = false" class="btn btn-ghost">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
         <p class="warning-text">
-          Are you sure you want to delete all {{ players.length }} players? This action cannot be undone.
+          Are you sure you want to delete all {{ players.length }} golfers? This action cannot be undone.
         </p>
         <div class="modal-actions">
           <button @click="showDeleteAllConfirm = false" class="btn btn-secondary">Cancel</button>
@@ -423,7 +422,7 @@
     <div v-if="showAddPlayer" class="modal-overlay" @click.self="closeAddPlayerModal">
       <div class="modal fade-in modal-large">
         <div class="modal-header">
-          <h2>Add New Player</h2>
+          <h2>Add New Golfer</h2>
           <div class="modal-header-actions">
             <button type="button" @click="showNamePicker = true" class="btn btn-ghost btn-sm" title="Pick from Name Database">
               <i class="fa-solid fa-address-book"></i> Pick Name
@@ -490,50 +489,41 @@
             <div class="form-row">
               <div class="form-group">
                 <div class="skill-input-row">
-                  <label class="form-label">Serve</label>
-                  <button type="button" @click="randomizeSkill('skill_serve')" class="btn-icon" title="Randomize">
+                  <label class="form-label">Driving</label>
+                  <button type="button" @click="randomizeSkill('skill_driving')" class="btn-icon" title="Randomize">
                     <i class="fa-solid fa-shuffle"></i>
                   </button>
                 </div>
-                <input v-model.number="newPlayer.skill_serve" type="number" class="input-field" min="0" max="99" />
+                <input v-model.number="newPlayer.skill_driving" type="number" class="input-field" min="0" max="99" />
               </div>
               <div class="form-group">
                 <div class="skill-input-row">
-                  <label class="form-label">Forehand</label>
-                  <button type="button" @click="randomizeSkill('skill_forehand')" class="btn-icon" title="Randomize">
+                  <label class="form-label">Iron Play</label>
+                  <button type="button" @click="randomizeSkill('skill_iron_play')" class="btn-icon" title="Randomize">
                     <i class="fa-solid fa-shuffle"></i>
                   </button>
                 </div>
-                <input v-model.number="newPlayer.skill_forehand" type="number" class="input-field" min="0" max="99" />
+                <input v-model.number="newPlayer.skill_iron_play" type="number" class="input-field" min="0" max="99" />
               </div>
               <div class="form-group">
                 <div class="skill-input-row">
-                  <label class="form-label">Backhand</label>
-                  <button type="button" @click="randomizeSkill('skill_backhand')" class="btn-icon" title="Randomize">
+                  <label class="form-label">Short Game</label>
+                  <button type="button" @click="randomizeSkill('skill_short_game')" class="btn-icon" title="Randomize">
                     <i class="fa-solid fa-shuffle"></i>
                   </button>
                 </div>
-                <input v-model.number="newPlayer.skill_backhand" type="number" class="input-field" min="0" max="99" />
+                <input v-model.number="newPlayer.skill_short_game" type="number" class="input-field" min="0" max="99" />
               </div>
             </div>
             <div class="form-row">
               <div class="form-group">
                 <div class="skill-input-row">
-                  <label class="form-label">Volley</label>
-                  <button type="button" @click="randomizeSkill('skill_volley')" class="btn-icon" title="Randomize">
+                  <label class="form-label">Putting</label>
+                  <button type="button" @click="randomizeSkill('skill_putting')" class="btn-icon" title="Randomize">
                     <i class="fa-solid fa-shuffle"></i>
                   </button>
                 </div>
-                <input v-model.number="newPlayer.skill_volley" type="number" class="input-field" min="0" max="99" />
-              </div>
-              <div class="form-group">
-                <div class="skill-input-row">
-                  <label class="form-label">Movement</label>
-                  <button type="button" @click="randomizeSkill('skill_movement')" class="btn-icon" title="Randomize">
-                    <i class="fa-solid fa-shuffle"></i>
-                  </button>
-                </div>
-                <input v-model.number="newPlayer.skill_movement" type="number" class="input-field" min="0" max="99" />
+                <input v-model.number="newPlayer.skill_putting" type="number" class="input-field" min="0" max="99" />
               </div>
               <div class="form-group">
                 <div class="skill-input-row">
@@ -544,26 +534,24 @@
                 </div>
                 <input v-model.number="newPlayer.skill_mental" type="number" class="input-field" min="0" max="99" />
               </div>
+              <div class="form-group">
+                <div class="skill-input-row">
+                  <label class="form-label">Consistency</label>
+                  <button type="button" @click="randomizeSkill('skill_consistency')" class="btn-icon" title="Randomize">
+                    <i class="fa-solid fa-shuffle"></i>
+                  </button>
+                </div>
+                <input v-model.number="newPlayer.skill_consistency" type="number" class="input-field" min="0" max="99" />
+              </div>
             </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Specialty</label>
-              <select v-model="newPlayer.specialty" class="input-field">
-                <option value="all-round">All-Round</option>
-                <option value="hardcourt">Hard Court</option>
-                <option value="clay">Clay</option>
-                <option value="grass">Grass</option>
-              </select>
-            </div>
-          </div>
           <div class="modal-actions">
             <button type="button" @click="closeAddPlayerModal" class="btn btn-secondary">Cancel</button>
-            <button type="submit" class="btn btn-primary tennis-btn" :disabled="addingPlayer || !newPlayer.country">
+            <button type="submit" class="btn btn-primary golf-btn" :disabled="addingPlayer || !newPlayer.country">
               <i v-if="addingPlayer" class="fa-solid fa-spinner fa-spin"></i>
               <i v-else class="fa-solid fa-plus"></i>
-              Add Player
+              Add Golfer
             </button>
           </div>
         </form>
@@ -577,20 +565,20 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { useTennisStore } from '../stores/tennis'
+import { useGolfStore } from '../stores/golf'
 import NamePicker from '../components/NamePicker.vue'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const tennisStore = useTennisStore()
+const golfStore = useGolfStore()
 
 const worldId = computed(() => route.params.id)
-const world = computed(() => tennisStore.currentWorld)
-const players = computed(() => tennisStore.players)
-const currentSeason = computed(() => tennisStore.currentSeason)
-const events = computed(() => tennisStore.events)
-const standings = computed(() => tennisStore.standings)
+const world = computed(() => golfStore.currentWorld)
+const players = computed(() => golfStore.players)
+const currentSeason = computed(() => golfStore.currentSeason)
+const events = computed(() => golfStore.events)
+const standings = computed(() => golfStore.standings)
 
 // Pagination for players
 const playersPerPage = 20
@@ -630,7 +618,7 @@ const activeTab = ref('calendar')
 const tabs = [
   { id: 'calendar', name: 'Calendar', icon: 'fa-solid fa-calendar' },
   { id: 'standings', name: 'Standings', icon: 'fa-solid fa-ranking-star' },
-  { id: 'players', name: 'Players', icon: 'fa-solid fa-users' }
+  { id: 'golfers', name: 'Golfers', icon: 'fa-solid fa-users' }
 ]
 
 const generatingPlayers = ref(false)
@@ -687,13 +675,12 @@ const newPlayer = ref({
   first_name: '',
   last_name: '',
   country: '',
-  skill_serve: 70,
-  skill_forehand: 70,
-  skill_backhand: 70,
-  skill_volley: 70,
-  skill_movement: 70,
+  skill_driving: 70,
+  skill_iron_play: 70,
+  skill_short_game: 70,
+  skill_putting: 70,
   skill_mental: 70,
-  specialty: 'all-round'
+  skill_consistency: 70
 })
 
 function filterCountries() {
@@ -731,24 +718,20 @@ function randomizeSkill(skillName) {
 }
 
 function randomizeAllSkills() {
-  randomizeSkill('skill_serve')
-  randomizeSkill('skill_forehand')
-  randomizeSkill('skill_backhand')
-  randomizeSkill('skill_volley')
-  randomizeSkill('skill_movement')
+  randomizeSkill('skill_driving')
+  randomizeSkill('skill_iron_play')
+  randomizeSkill('skill_short_game')
+  randomizeSkill('skill_putting')
   randomizeSkill('skill_mental')
+  randomizeSkill('skill_consistency')
 }
 
 function goBack() {
-  router.push('/tennis')
+  router.push('/golf')
 }
 
 function goToEvent(event) {
-  router.push(`/tennis/world/${worldId.value}/event/${event.id}`)
-}
-
-function goToPlayer(playerId) {
-  router.push(`/tennis/world/${worldId.value}/player/${playerId}`)
+  router.push(`/golf/world/${worldId.value}/event/${event.id}`)
 }
 
 function handleLogout() {
@@ -759,10 +742,10 @@ function handleLogout() {
 async function handleGeneratePlayers() {
   generatingPlayers.value = true
   try {
-    await tennisStore.generatePlayers(worldId.value, 100)
-    await tennisStore.fetchStandings(worldId.value)
+    await golfStore.generatePlayers(worldId.value, 120)
+    await golfStore.fetchStandings(worldId.value)
   } catch (error) {
-    console.error('Failed to generate players:', error)
+    console.error('Failed to generate golfers:', error)
   } finally {
     generatingPlayers.value = false
   }
@@ -771,7 +754,7 @@ async function handleGeneratePlayers() {
 async function handleCreateSeason() {
   creatingOrResetting.value = true
   try {
-    await tennisStore.createSeason(worldId.value, new Date().getFullYear())
+    await golfStore.createSeason(worldId.value, new Date().getFullYear())
   } catch (error) {
     console.error('Failed to create season:', error)
   } finally {
@@ -783,9 +766,9 @@ async function handleResetSeason() {
   if (!currentSeason.value) return
   creatingOrResetting.value = true
   try {
-    await tennisStore.resetSeason(currentSeason.value.id)
-    await tennisStore.fetchPlayers(worldId.value)
-    await tennisStore.fetchStandings(worldId.value)
+    await golfStore.resetSeason(currentSeason.value.id)
+    await golfStore.fetchPlayers(worldId.value)
+    await golfStore.fetchStandings(worldId.value)
     showResetConfirm.value = false
   } catch (error) {
     console.error('Failed to reset season:', error)
@@ -797,11 +780,11 @@ async function handleResetSeason() {
 async function handleDeleteAllPlayers() {
   deletingAll.value = true
   try {
-    await tennisStore.deleteAllPlayers(worldId.value)
-    await tennisStore.fetchStandings(worldId.value)
+    await golfStore.deleteAllPlayers(worldId.value)
+    await golfStore.fetchStandings(worldId.value)
     showDeleteAllConfirm.value = false
   } catch (error) {
-    console.error('Failed to delete all players:', error)
+    console.error('Failed to delete all golfers:', error)
   } finally {
     deletingAll.value = false
   }
@@ -809,10 +792,10 @@ async function handleDeleteAllPlayers() {
 
 async function deletePlayer(player) {
   try {
-    await tennisStore.deletePlayer(player.id)
-    await tennisStore.fetchStandings(worldId.value)
+    await golfStore.deletePlayer(player.id)
+    await golfStore.fetchStandings(worldId.value)
   } catch (error) {
-    console.error('Failed to delete player:', error)
+    console.error('Failed to delete golfer:', error)
   }
 }
 
@@ -821,13 +804,12 @@ function resetPlayerForm() {
     first_name: '',
     last_name: '',
     country: '',
-    skill_serve: 70,
-    skill_forehand: 70,
-    skill_backhand: 70,
-    skill_volley: 70,
-    skill_movement: 70,
+    skill_driving: 70,
+    skill_iron_play: 70,
+    skill_short_game: 70,
+    skill_putting: 70,
     skill_mental: 70,
-    specialty: 'all-round'
+    skill_consistency: 70
   }
   countrySearch.value = ''
   showCountryDropdown.value = false
@@ -848,12 +830,12 @@ function closeAddPlayerModal() {
 async function handleAddPlayer() {
   addingPlayer.value = true
   try {
-    await tennisStore.createPlayer(worldId.value, newPlayer.value)
-    await tennisStore.fetchPlayers(worldId.value)
-    await tennisStore.fetchStandings(worldId.value)
+    await golfStore.createPlayer(worldId.value, newPlayer.value)
+    await golfStore.fetchPlayers(worldId.value)
+    await golfStore.fetchStandings(worldId.value)
     closeAddPlayerModal()
   } catch (error) {
-    console.error('Failed to add player:', error)
+    console.error('Failed to add golfer:', error)
   } finally {
     addingPlayer.value = false
   }
@@ -875,57 +857,30 @@ function formatStatus(status) {
   return labels[status] || status
 }
 
-function formatSurface(surface) {
-  const labels = {
-    hard: 'Hard Court',
-    clay: 'Clay',
-    grass: 'Grass'
-  }
-  return labels[surface] || surface
-}
-
-function formatSpecialty(specialty) {
-  const labels = {
-    'all-round': 'All-Round',
-    hardcourt: 'Hard Court',
-    clay: 'Clay',
-    grass: 'Grass'
-  }
-  return labels[specialty] || specialty
-}
-
-function formatSpecialtyShort(specialty) {
-  const labels = {
-    'all-round': 'ALL',
-    hardcourt: 'HARD',
-    clay: 'CLAY',
-    grass: 'GRASS'
-  }
-  return labels[specialty] || specialty
-}
-
 function getTournamentLabel(type) {
   const labels = {
-    grand_slam: 'Grand Slam',
-    masters_1000: 'Masters 1000',
-    atp_500: 'ATP 500',
-    atp_250: 'ATP 250'
+    major: 'Major',
+    players_championship: 'THE PLAYERS',
+    wgc: 'WGC',
+    invitational: 'Invitational',
+    regular: 'Regular'
   }
   return labels[type] || type
 }
 
 function getBadgeStyle(type) {
   const styles = {
-    grand_slam: { background: '#fef3c7', color: '#b45309' },
-    masters_1000: { background: '#ede9fe', color: '#7c3aed' },
-    atp_500: { background: '#dbeafe', color: '#2563eb' },
-    atp_250: { background: '#f3f4f6', color: '#4b5563' }
+    major: { background: '#fef3c7', color: '#b45309' },
+    players_championship: { background: '#ede9fe', color: '#7c3aed' },
+    wgc: { background: '#ede9fe', color: '#7c3aed' },
+    invitational: { background: '#dbeafe', color: '#2563eb' },
+    regular: { background: '#f3f4f6', color: '#4b5563' }
   }
   return styles[type] || { background: '#f3f4f6', color: '#4b5563' }
 }
 
-function getSurfaceClass(surface) {
-  return `surface-${surface}`
+function getTournamentTypeClass(type) {
+  return `type-${type}`
 }
 
 function getStatusClass(status) {
@@ -948,14 +903,14 @@ function getSkillClass(skill) {
 
 onMounted(async () => {
   try {
-    await tennisStore.fetchWorld(worldId.value)
+    await golfStore.fetchWorld(worldId.value)
     await Promise.all([
-      tennisStore.fetchPlayers(worldId.value),
-      tennisStore.fetchCurrentSeason(worldId.value),
-      tennisStore.fetchStandings(worldId.value)
+      golfStore.fetchPlayers(worldId.value),
+      golfStore.fetchCurrentSeason(worldId.value),
+      golfStore.fetchStandings(worldId.value)
     ])
   } catch (error) {
-    console.error('Failed to load tennis world:', error)
+    console.error('Failed to load golf world:', error)
   } finally {
     loading.value = false
   }
@@ -963,7 +918,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.tennis-world {
+.golf-world {
   min-height: 100vh;
 }
 
@@ -1123,11 +1078,11 @@ onMounted(async () => {
   gap: 0.75rem;
 }
 
-.tennis-btn {
+.golf-btn {
   background: linear-gradient(135deg, #34d399, #10b981);
 }
 
-.tennis-btn:hover {
+.golf-btn:hover {
   background: linear-gradient(135deg, #10b981, #059669);
 }
 
@@ -1153,6 +1108,31 @@ onMounted(async () => {
 
 .tournament-card.clickable {
   cursor: pointer;
+}
+
+/* Tournament type border colors */
+.tournament-card.type-major {
+  border-left-color: #f59e0b;
+}
+
+.tournament-card.type-players_championship {
+  border-left-color: #8b5cf6;
+}
+
+.tournament-card.type-wgc {
+  border-left-color: #8b5cf6;
+}
+
+.tournament-card.type-invitational {
+  border-left-color: #3b82f6;
+}
+
+.tournament-card.type-regular {
+  border-left-color: #6b7280;
+}
+
+.tournament-card.status-completed {
+  background: #f0fdf4;
 }
 
 .tournament-winner {
@@ -1191,22 +1171,6 @@ onMounted(async () => {
 
 .tournament-card:hover .tournament-action i {
   transform: translateX(4px);
-}
-
-.tournament-card.surface-hard {
-  border-left-color: #3b82f6;
-}
-
-.tournament-card.surface-clay {
-  border-left-color: #f97316;
-}
-
-.tournament-card.surface-grass {
-  border-left-color: #22c55e;
-}
-
-.tournament-card.status-completed {
-  background: #f0fdf4;
 }
 
 .tournament-header {
@@ -1270,28 +1234,6 @@ onMounted(async () => {
   color: var(--gray-400);
 }
 
-.surface-tag {
-  padding: 0.0625rem 0.375rem;
-  border-radius: 0.25rem;
-  font-size: 0.65rem;
-  font-weight: 500;
-}
-
-.surface-tag.hard {
-  background: #dbeafe;
-  color: #2563eb;
-}
-
-.surface-tag.clay {
-  background: #ffedd5;
-  color: #c2410c;
-}
-
-.surface-tag.grass {
-  background: #dcfce7;
-  color: #16a34a;
-}
-
 /* Standings Table */
 .standings-table {
   background: white;
@@ -1350,26 +1292,20 @@ onMounted(async () => {
   color: white;
 }
 
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .player-name {
   font-weight: 500;
   color: var(--gray-900);
 }
 
-.player-name.clickable,
-.player-name-cell.clickable {
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.player-name.clickable:hover,
-.player-name-cell.clickable:hover {
-  color: #10b981;
-  text-decoration: underline;
-}
-
-.country-code {
-  font-size: 0.875rem;
-  color: var(--gray-600);
+.player-name-cell {
+  font-weight: 500;
+  color: var(--gray-900);
 }
 
 .points {
@@ -1377,31 +1313,33 @@ onMounted(async () => {
   color: #10b981;
 }
 
-.skill-badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+.wins-value,
+.top10-value {
+  font-weight: 500;
+  color: var(--gray-700);
 }
 
-.skill-badge.excellent {
-  background: #dcfce7;
-  color: #16a34a;
+.rank-col {
+  width: 60px;
 }
 
-.skill-badge.good {
-  background: #dbeafe;
-  color: #2563eb;
+.player-col {
+  min-width: 200px;
 }
 
-.skill-badge.average {
-  background: #fef3c7;
-  color: #b45309;
+.points-col {
+  width: 100px;
+  text-align: right;
 }
 
-.skill-badge.below {
-  background: var(--gray-100);
-  color: var(--gray-600);
+.wins-col {
+  width: 70px;
+  text-align: center;
+}
+
+.top10-col {
+  width: 80px;
+  text-align: center;
 }
 
 /* Players Table */
@@ -1470,11 +1408,6 @@ onMounted(async () => {
   text-align: center;
 }
 
-.col-specialty {
-  width: 60px;
-  text-align: center;
-}
-
 .col-actions {
   width: 40px;
   text-align: center;
@@ -1491,11 +1424,6 @@ onMounted(async () => {
   font-weight: 600;
   font-size: 0.75rem;
   color: var(--gray-700);
-}
-
-.player-name-cell {
-  font-weight: 500;
-  color: var(--gray-900);
 }
 
 .points-value {
@@ -1533,33 +1461,31 @@ onMounted(async () => {
   color: var(--gray-600);
 }
 
-.specialty-tag {
-  display: inline-block;
-  padding: 0.125rem 0.375rem;
+.skill-badge {
+  padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.025em;
 }
 
-.specialty-tag.all-round {
-  background: var(--gray-100);
-  color: var(--gray-600);
+.skill-badge.excellent {
+  background: #dcfce7;
+  color: #16a34a;
 }
 
-.specialty-tag.hardcourt {
+.skill-badge.good {
   background: #dbeafe;
   color: #2563eb;
 }
 
-.specialty-tag.clay {
-  background: #ffedd5;
-  color: #c2410c;
+.skill-badge.average {
+  background: #fef3c7;
+  color: #b45309;
 }
 
-.specialty-tag.grass {
-  background: #dcfce7;
-  color: #16a34a;
+.skill-badge.below {
+  background: var(--gray-100);
+  color: var(--gray-600);
 }
 
 .btn-delete {

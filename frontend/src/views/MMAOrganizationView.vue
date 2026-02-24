@@ -363,9 +363,14 @@
       <div class="modal fighter-modal fade-in">
         <div class="modal-header">
           <h2>{{ showEditFighterModal ? 'Edit Fighter' : 'Add Fighter' }}</h2>
-          <button @click="closeModals" class="btn btn-ghost">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
+          <div class="modal-header-actions">
+            <button type="button" @click="showNamePicker = true" class="btn btn-ghost btn-sm" title="Pick from Name Database">
+              <i class="fa-solid fa-address-book"></i> Pick Name
+            </button>
+            <button @click="closeModals" class="btn btn-ghost">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
         </div>
         <form @submit.prevent="showEditFighterModal ? handleUpdateFighter() : handleAddFighter()">
           <div class="form-body">
@@ -526,13 +531,15 @@
       </div>
     </div>
   </div>
-</template>
+    <NamePicker v-model="showNamePicker" @select="handleNamePicked" />
+  </template>
 
 <script setup>
 import { ref, computed, onMounted, watch, watchEffect } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useMMAStore } from '../stores/mma'
+import NamePicker from '../components/NamePicker.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -569,6 +576,7 @@ const showCountryDropdown = ref(false)
 const filteredCountries = ref([])
 
 const showAddFighterModal = ref(false)
+const showNamePicker = ref(false)
 const showEditFighterModal = ref(false)
 const showDeleteFighterModal = ref(false)
 const savingFighter = ref(false)
@@ -655,6 +663,12 @@ function onGenderChange() {
   if (classes.length && !classes.find(c => c.weight === fighterForm.value.weight_class)) {
     fighterForm.value.weight_class = classes[0].weight
   }
+}
+
+function handleNamePicked(data) {
+  fighterForm.value.first_name = data.first_name
+  fighterForm.value.last_name = data.last_name
+  if (data.country_code) fighterForm.value.country_code = data.country_code
 }
 
 function closeModals() {

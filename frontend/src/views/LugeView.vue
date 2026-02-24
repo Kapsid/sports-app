@@ -556,7 +556,12 @@
       <div class="modal athlete-modal fade-in">
         <div class="modal-header">
           <h2>{{ editingAthlete ? 'Edit Athlete' : 'Create New Athlete' }}</h2>
-          <button @click="closeAthleteModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          <div class="modal-header-actions">
+            <button type="button" @click="showNamePicker = true" class="btn btn-ghost btn-sm" title="Pick from Name Database">
+              <i class="fa-solid fa-address-book"></i> Pick Name
+            </button>
+            <button @click="closeAthleteModal" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i></button>
+          </div>
         </div>
         <div class="modal-body">
           <form @submit.prevent="handleSaveAthlete">
@@ -686,7 +691,8 @@
     </div>
 
   </div>
-</template>
+    <NamePicker v-model="showNamePicker" @select="handleNamePicked" />
+  </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
@@ -696,6 +702,7 @@ import { useLugeStore } from '../stores/luge'
 import { useTeamsStore } from '../stores/teams'
 import { useWeekStatusStore } from '../stores/weekStatus'
 import '../assets/sport-view.css'
+import NamePicker from '../components/NamePicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -715,6 +722,7 @@ const creatingSeason = ref(false)
 
 // Athletes
 const showAthleteModal = ref(false)
+const showNamePicker = ref(false)
 const editingAthlete = ref(null)
 const savingAthlete = ref(false)
 const showDeleteAthleteConfirm = ref(false)
@@ -917,6 +925,12 @@ function openEditAthleteModal(athlete) {
   editingAthlete.value = athlete
   athleteForm.value = { ...athlete }
   showAthleteModal.value = true
+}
+
+function handleNamePicked(data) {
+  athleteForm.value.first_name = data.first_name
+  athleteForm.value.last_name = data.last_name
+  if (data.country_code) athleteForm.value.country = data.country_code
 }
 
 function closeAthleteModal() {
